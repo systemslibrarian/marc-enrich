@@ -80,6 +80,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand h1 span { color: var(--accent); }
 .brand .field-line { font-family: var(--font-mono); font-size: 0.85rem; color: var(--muted); }
 .masthead p { max-width: 52ch; color: var(--muted); font-size: 0.95rem; }
+.intro { display: grid; gap: 8px; max-width: 52ch; }
+.sitenav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9rem; font-weight: 600; }
+.sitenav a { text-decoration: none; }
+.sitenav a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* File bar */
 .filebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center;
@@ -249,7 +253,13 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
     <h1>MARC-<span>Enrich</span></h1>
     <div class="field-line" aria-hidden="true">=520&nbsp;&nbsp;\\$aSummary drafted from a real source, approved by you.</div>
   </div>
-  <p>Break MARC records to readable text, find the ones missing a summary or series, look up real sources, and approve every change before it goes back to your ILS. Your file never leaves this browser except for the lookups you run.</p>
+  <div class="intro">
+    <p>Break MARC records to readable text, find the ones missing a summary or series, look up real sources, and approve every change before it goes back to your ILS. Your file never leaves this browser except for the lookups you run.</p>
+    <nav class="sitenav" aria-label="Site">
+      <a href="awards.html">Award data</a>
+      <a href="https://github.com/systemslibrarian/marc-enrich" target="_blank" rel="noopener">Source on GitHub</a>
+    </nav>
+  </div>
 </header>
 
 <section class="filebar" aria-label="File">
@@ -489,6 +499,7 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
 
 <footer>
   <p>Sources: Open Library, Google Books, Library of Congress id.loc.gov, Wikipedia and Wikidata. AI by the Anthropic API with your own key.</p>
+  <p><a href="awards.html">Award data</a>: every Oscar, Emmy and Golden Globe winner used for 586 notes, with its source. · <a href="data/awards.csv">awards.csv</a> · <a href="https://github.com/systemslibrarian/marc-enrich" target="_blank" rel="noopener">GitHub</a></p>
   <p>Mnemonic format follows MarcEdit's MarcBreaker conventions: blanks as <span class="mono">\</span>, <span class="mono">{dollar}</span> for $, and MARC-8 bytes as <span class="mono">{0xHH}</span>.</p>
 </footer>
 </div>
