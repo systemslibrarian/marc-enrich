@@ -1060,7 +1060,7 @@ Reply with JSON only and nothing else:
     ec.hidden = !nChanged; ec.textContent = fmt(nChanged);
   }
 
-  function hiLine(line, isNew) {
+  function hiLine(line, isNew, isKey) {
     const tag = line.slice(1, 4);
     const rest = line.slice(4);
     const escs = (s) => s.replace(/\{(dollar|lcub|rcub|0x[0-9A-F]{2})\}/g, '<span class="m-esc">{$1}</span>');
@@ -1070,7 +1070,7 @@ Reply with JSON only and nothing else:
       out += rest.slice(0, 2) + `<span class="m-ind">${esc(rest.slice(2, 4))}</span>`
         + escs(esc(rest.slice(4))).replace(/\$(.)/g, (m, c) => `<span class="m-code">$${c}</span>`);
     }
-    return isNew ? `<span class="m-new">${out}</span>` : out;
+    return isNew ? `<span class="m-new">${out}</span>` : isKey ? `<span class="m-key">${out}</span>` : out;
   }
   const hiFields = (fields) => fields.map((f) => hiLine(M.fieldToMnemonic(f), true)).join("\n");
 
@@ -1111,7 +1111,17 @@ Reply with JSON only and nothing else:
         ${c.status === "rejected" ? `<button class="btn small" data-act="unreject" data-k="${k}">Undo</button>` : `<button class="btn small bad" data-act="reject" data-k="${k}">Reject</button>`}
         ${["error", "nosource", "skipped", "nomatch"].includes(c.status) ? `<button class="btn small" data-act="retry" data-k="${k}">Retry</button>` : ""}
       </div></div>`;
-    return `<article class="card ${c.status === "approved" ? "approved" : ""}" data-card="${k}">${head}<div class="card-body"><div class="src">${srcs}</div><div class="prop">${prop}${preview}</div></div>${foot}</article>`;
+    // The full record, with the fields this task's decision rests on highlighted
+    const KEY = {
+      awards: /^(008|046|100|110|130|240|245|246|26[04]|500|508|511|518|586|593|700|710|730)$/,
+      summary: /^(020|100|110|245|250|26[04]|500|520)$/,
+      series: /^(020|100|245|26[04]|490|800|810|811|830)$/,
+    }[task] || /^245$/;
+    let marc;
+    try { marc = M.toMnemonic(baseRecord(c.i)).split("\n").map((l) => hiLine(l, false, KEY.test(l.slice(1, 4)))).join("\n"); }
+    catch (e) { marc = `<span class="m-esc">This record could not be read: ${esc(e.message)}</span>`; }
+    const record = `<details class="recmarc" ${c.status === "review" ? "open" : ""}><summary>MARC record <span class="mono muted">#${c.i + 1}</span> <span class="muted">· highlighted fields are the ones the match checks</span></summary><pre class="mrk wrap-lines">${marc}</pre></details>`;
+    return `<article class="card ${c.status === "approved" ? "approved" : ""}" data-card="${k}">${head}<div class="card-body"><div class="src">${srcs}</div><div class="prop">${prop}${preview}</div></div>${record}${foot}</article>`;
   }
   const wordCount = (s) => (String(s || "").trim().match(/\S+/g) || []).length;
 
