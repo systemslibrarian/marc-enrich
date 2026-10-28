@@ -118,16 +118,42 @@ function cellContent(cell) {
   }
   return cell;
 }
-const plainCell = (c) => cellContent(c)
-  // keep the text of display-wrapper templates ({{nowrap|2024}}, {{sort|key|2024}}); drop the rest
-  .replace(/\{\{\s*(?:nowrap|nobr|center|small|big|sort|nts|anchor)\s*\|([^{}]*)\}\}/gi, (_, args) => args.split("|").pop())
-  .replace(/\{\{[^{}]*\}\}/g, " ")
-  .replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1")
-  .replace(/<[^>]+>/g, " ").replace(/'{2,}/g, "").trim();
-const BOLD_LINK = /'{3,}\s*(?:\{\{[^{}|]*\|(?:[^{}|]*\|)*)?\[\[([^\]|#]+)/g;
+// Citations and comments carry their own years, links and bold text; remove them first.
+const stripRefs = (s) => s
+  .replace(/<!--[\s\S]*?-->/g, "")
+  .replace(/<ref[^>]*\/>/gi, "")
+  .replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, "");
+
+/** Readable text of a cell: links -> their label, wrapper templates -> their text, other templates removed. */
+function plainCell(cell) {
+  let t = stripRefs(cellContent(cell)).replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1");
+  for (let k = 0; k < 6 && t.includes("{{"); k++) {
+    t = t.replace(/\{\{\s*(?:nowrap|nobr|center|small|big|sort|nts|anchor)\s*\|([^{}]*)\}\}/gi, (_, a) => a.split("|").pop())
+      .replace(/\{\{[^{}]*\}\}/g, " ");
+  }
+  return t.replace(/<[^>]+>/g, " ").replace(/'{2,}/g, "").replace(/\s+/g, " ").trim();
+}
 
 // Year of the Nth ceremony, so table years (often the film year) match Wikidata's award dates.
 const CEREMONY_BASE = [[/Golden Globe/, 1943], [/Academy Award/, 1928], [/Emmy/, 1948]];
+
+/** The award year a table cell stands for, or 0. Prefers the ceremony number when present. */
+function cellYear(cell, base) {
+  const t = plainCell(cell);
+  const m = t.match(/^((?:19[2-9]|20[0-4])\d)\b/);
+  if (!m || t.length > 40) return 0;
+  if (base) {
+    // ceremony number in a link target ([[82nd Golden Globe Awards|2024]]) or shown as "(82nd)"
+    const raw = stripRefs(cellContent(cell));
+    const ord = raw.match(/\[\[\s*(\d{1,3})(?:st|nd|rd|th)\s+[^\]|]*(?:Award|Emmy)/i) || t.match(/\((\d{1,3})(?:st|nd|rd|th)\)/);
+    if (ord) return base + +ord[1];
+  }
+  return +m[1];
+}
+// Winners are bolded; film and show titles are also italic ('''''Title'''''), while the
+// producers and networks bolded in the same row are not — so only bold-italic text counts.
+const BOLD_ITALIC = /'{5}(.+?)'{2,5}/g;
+const seasonless = (t) => t.replace(/\s*\((?:season|series) \d+\)$/i, "").replace(/,? season \d+$/i, "").trim();
 
 /** Winners from the award article's tables: bolded links in each year's group of rows. */
 async function wikipediaWinners(title) {
@@ -135,20 +161,36 @@ async function wikipediaWinners(title) {
   const params = new URLSearchParams({ action: "parse", page: title, prop: "wikitext", format: "json", formatversion: "2", redirects: "1" });
   const j = await request(`${WIKI_API}?${params}`);
   const text = j.parse?.wikitext || "";
+  // Wikipedia links a title only the first time, so remember label -> article for unlinked repeats.
+  const linkMap = new Map();
+  for (const m of text.matchAll(/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g)) {
+    const label = (m[2] || m[1]).replace(/'{2,}/g, "").trim();
+    if (!linkMap.has(label)) linkMap.set(label, m[1].trim());
+  }
   const out = [];
   for (const table of text.match(/\{\|[\s\S]*?\n\|\}/g) || []) {
     let year = 0;
     for (const row of table.split(/\n\|-[^\n]*/)) {
       for (const cell of row.split(/\n[|!]|\|\||!!/)) {
-        const t = plainCell(cell);
-        const m = t.match(/^((?:19[2-9]|20[0-4])\d)\b/);
-        if (m && t.length < 40) {
-          const ord = base && t.match(/\((\d{1,3})(?:st|nd|rd|th)\)/);
-          year = ord ? base + +ord[1] : +m[1];
-        }
+        const y = cellYear(cell, base);
+        if (y) year = y;
       }
       if (!year) continue;
-      for (const m of row.matchAll(BOLD_LINK)) out.push({ title: m[1].trim(), y: year });
+      for (const m of stripRefs(row).matchAll(BOLD_ITALIC)) {
+        const link = m[1].match(/\[\[([^\]|#]+)/);
+        let title = link ? link[1].trim() : "";
+        if (!title) {
+          const label = plainCell("|" + m[1]);
+          title = linkMap.get(label) || label;
+        }
+        title = seasonless(title);
+        if (title) out.push({ title, y: year });
+      }
+      // same idea, nested the other way: ''[[Hamnet (film)|'''Hamnet''']]'' or '''[[X|''X'']]'''
+      for (const m of stripRefs(row).matchAll(/(?:''\s*\[\[([^\]|#]+)\|\s*'''|'''\s*\[\[([^\]|#]+)\|\s*''(?!'))/g)) {
+        const title = seasonless((m[1] || m[2]).trim());
+        if (title) out.push({ title, y: year });
+      }
     }
   }
   const seen = new Set();

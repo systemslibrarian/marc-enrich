@@ -64,9 +64,9 @@ Export **changed records only** and load with an overlay profile that matches on
 
 ## Limits
 
-- Large files are held in browser memory; a few hundred thousand records works on a typical desktop, but split very large exports.
+- **Recommended: up to 250,000 records per file.** Loading, Find, Awards and Break/Make handle a file that size in seconds (measured in Chrome: 300,000 records load in about 3 s and search in about 2 s; 600,000 load in 5 s and use about 1 GB of browser memory). The page warns above 250,000 records or 200 MB; split larger exports.
+- **Summaries and series** call web services for every record, at roughly 60 records a minute, so each run is capped at 2,000 records (about 30–40 minutes). Find records again for the next batch; records already looked up are skipped.
 - Open Library and Google Books coverage varies. Expect many records — especially local, older, and non-book materials — to come back with no source.
-- Lookups run 3 at a time by default; raise it carefully to stay polite to the free services.
 
 ## Files
 

@@ -1155,7 +1155,7 @@ Reply with JSON only and nothing else:
     const src = S.src;
     if (!src) return;
     $("#fileName").textContent = src.sample ? "Sample records" : src.name;
-    $("#fileHint").textContent = src.sample ? "Example books and DVDs, not your data. Choose your own file — whole ILS exports are fine (tested with 600,000 records)." : `${(src.size / 1048576).toFixed(src.size < 1048576 ? 2 : 1)} MB · ${src.kind === "mrc" ? "binary MARC" : "MarcEdit mnemonic text"}`;
+    $("#fileHint").textContent = src.sample ? "Example books and DVDs, not your data. Choose your own file — up to 250,000 records per file is recommended." : `${(src.size / 1048576).toFixed(src.size < 1048576 ? 2 : 1)} MB · ${src.kind === "mrc" ? "binary MARC" : "MarcEdit mnemonic text"}`;
     const missing520 = src.count - (S.tagCounts.get("520") || 0);
     const chips = [
       src.sample ? `<span class="chip sample">Sample</span>` : "",
@@ -1164,7 +1164,7 @@ Reply with JSON only and nothing else:
       S.encCounts.marc8 ? `<span class="chip">${fmt(S.encCounts.marc8)} MARC-8</span>` : "",
       `<span class="chip">${fmt(missing520)} without 520</span>`,
       S.bad.length ? `<span class="chip" style="color:var(--bad)">${fmt(S.bad.length)} unreadable</span>` : "",
-      src.count > 500000 || src.size > 400 * 1048576 ? `<span class="chip" style="color:var(--warn)">Very large file — splitting it will keep the browser responsive</span>` : "",
+      src.count > 250000 || src.size > 200 * 1048576 ? `<span class="chip" style="color:var(--warn)">Over the recommended 250,000 records — consider splitting the file</span>` : "",
     ];
     $("#fileChips").innerHTML = chips.join("");
     const keyRec = (() => { try { return recId(src.get(0)); } catch { return ""; } })();
