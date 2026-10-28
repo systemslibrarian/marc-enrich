@@ -36,6 +36,7 @@
     encCounts: { utf8: 0, marc8: 0 },
     bad: [],
     view: 0,
+    viewFilter: null,   // { label, hits: [record indexes], pos, titles: {} } while browsing Find results
     task: "summary",
     found: [],          // candidates from the latest lookup task
     foundTask: null,
@@ -183,7 +184,7 @@
     }
     src.sample = isSample;
     S.src = src;
-    S.found = []; S.foundTask = null; S.findHits = []; S.changes.clear(); S.exported = true; S.view = 0;
+    S.found = []; S.foundTask = null; S.findHits = []; S.changes.clear(); S.exported = true; S.view = 0; S.viewFilter = null;
     $("#findResult").hidden = true; $("#runBox").hidden = true; $("#runBtn").disabled = true;
     await computeStats(warnings);
     renderAll();
@@ -528,6 +529,9 @@ Reply with JSON only and nothing else:
 
     if (o.task === "find") {
       S.findHits = hits;
+      const condText = { missingAll: "Missing all of", missingAny: "Missing any of", hasAny: "Has any of" }[o.findCond];
+      const typeText = { text: "books", audio: "audiobooks", video: "video", media: "books, audiobooks and video" }[o.findType];
+      S.findLabel = `${condText} ${o.findTags.split(/[\s,]+/).filter(Boolean).join(", ")}${typeText ? " · " + typeText : ""}`;
       renderFindResult(o);
       $("#runBtn").disabled = true;
       return;
@@ -556,7 +560,7 @@ Reply with JSON only and nothing else:
         <button class="btn small" data-find="csv" ${n ? "" : "disabled"}>Download list .csv</button>
         <button class="btn small" data-find="mrc" ${n ? "" : "disabled"}>Download these records .mrc</button>
         <button class="btn small" data-find="mrk" ${n ? "" : "disabled"}>Download these records .mrk</button>
-        <button class="btn small" data-find="view" ${n ? "" : "disabled"}>View first match</button>
+        <button class="btn small primary" data-find="view" ${n ? "" : "disabled"}>View matches</button>
       </div>`;
   }
 
@@ -1067,9 +1071,18 @@ Reply with JSON only and nothing else:
     const src = S.src;
     const pre = $("#mrkView");
     if (!src) { pre.innerHTML = '<span class="muted">Load a file to see its records here.</span>'; $("#recOf").textContent = "of 0"; return; }
-    S.view = Math.min(Math.max(0, S.view), src.count - 1);
-    $("#recNo").value = S.view + 1; $("#recNo").max = src.count;
-    $("#recOf").textContent = "of " + fmt(src.count);
+    const f = S.viewFilter;
+    if (f) {
+      f.pos = Math.min(Math.max(0, f.pos), f.hits.length - 1);
+      S.view = f.hits[f.pos];
+      $("#recNo").value = f.pos + 1; $("#recNo").max = f.hits.length;
+      $("#recOf").textContent = `of ${fmt(f.hits.length)} matches · record #${fmt(S.view + 1)}`;
+    } else {
+      S.view = Math.min(Math.max(0, S.view), src.count - 1);
+      $("#recNo").value = S.view + 1; $("#recNo").max = src.count;
+      $("#recOf").textContent = "of " + fmt(src.count);
+    }
+    renderFilterBar();
     try {
       const rec = src.get(S.view);
       $("#viewEnc").textContent = M.recordEncoding(rec.leader) === "utf8" ? "UTF-8" : "MARC-8";
@@ -1084,6 +1097,26 @@ Reply with JSON only and nothing else:
     } catch (e) {
       pre.innerHTML = `<span class="m-esc">This record could not be read: ${esc(e.message)}</span>`;
     }
+  }
+
+  function renderFilterBar() {
+    const f = S.viewFilter;
+    const bar = $("#viewFilter");
+    const list = $("#matchList");
+    bar.hidden = list.hidden = !f;
+    if (!f) return;
+    bar.innerHTML = `<span class="lbl">Filtered: <strong>${esc(f.label)}</strong> · ${fmt(f.hits.length)} record${f.hits.length === 1 ? "" : "s"}</span>
+      <button class="btn small" type="button" data-clear-filter>Clear filter</button>`;
+    const SHOW = 300;
+    const first = Math.max(0, Math.min(f.pos - 20, f.hits.length - SHOW));
+    const slice = f.hits.slice(first, first + SHOW);
+    list.innerHTML = slice.map((i, k) => {
+      if (!f.titles[i]) { try { const r = S.src.get(i); f.titles[i] = [recTitle(r), recId(r)]; } catch { f.titles[i] = ["(unreadable record)", ""]; } }
+      const [t, id] = f.titles[i];
+      return `<button type="button" data-pos="${first + k}" aria-current="${first + k === f.pos}"><span class="n">#${i + 1}</span><span class="t">${esc(t)}</span><span class="id">${esc(id)}</span></button>`;
+    }).join("") + (f.hits.length > SHOW ? `<div class="more">Showing ${fmt(slice.length)} of ${fmt(f.hits.length)} near the current record. Use the arrows or record box to move through all of them.</div>` : "");
+    const cur = list.querySelector('[aria-current="true"]');
+    if (cur) { const top = cur.offsetTop - list.offsetTop; if (top < list.scrollTop || top > list.scrollTop + list.clientHeight - cur.offsetHeight) list.scrollTop = top - 60; }
   }
 
   function renderTagTable() {
@@ -1201,7 +1234,11 @@ Reply with JSON only and nothing else:
 
   async function findExport(kind) {
     const hits = S.findHits;
-    if (kind === "view") { S.view = hits[0]; selectTab("records"); renderViewer(); return; }
+    if (kind === "view") {
+      S.viewFilter = { label: S.findLabel || "Find results", hits: hits.slice(), pos: 0, titles: {} };
+      selectTab("records");
+      return;
+    }
     if (kind === "csv") {
       const rows = [["record", "001", "isbn", "title", "author"]];
       for (let n = 0; n < hits.length; n++) {
@@ -1242,9 +1279,16 @@ Reply with JSON only and nothing else:
     document.addEventListener("drop", (e) => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) openFile(f); });
     $("#sampleBtn").addEventListener("click", () => loadSample());
 
-    $("#prevRec").addEventListener("click", () => { S.view--; renderViewer(); });
-    $("#nextRec").addEventListener("click", () => { S.view++; renderViewer(); });
-    $("#recNo").addEventListener("change", (e) => { S.view = (+e.target.value || 1) - 1; renderViewer(); });
+    const step = (d) => { if (S.viewFilter) S.viewFilter.pos += d; else S.view += d; renderViewer(); };
+    $("#prevRec").addEventListener("click", () => step(-1));
+    $("#nextRec").addEventListener("click", () => step(1));
+    $("#recNo").addEventListener("change", (e) => {
+      const n = (+e.target.value || 1) - 1;
+      if (S.viewFilter) S.viewFilter.pos = n; else S.view = n;
+      renderViewer();
+    });
+    $("#viewFilter").addEventListener("click", (e) => { if (e.target.closest("[data-clear-filter]")) { S.viewFilter = null; renderViewer(); } });
+    $("#matchList").addEventListener("click", (e) => { const b = e.target.closest("[data-pos]"); if (b) { S.viewFilter.pos = +b.dataset.pos; renderViewer(); } });
     $("#wrapLines").addEventListener("change", (e) => $("#mrkView").classList.toggle("wrap-lines", e.target.checked));
     $("#dlMrk").addEventListener("click", async () => {
       if (!S.src) return toast("Load a file first.");

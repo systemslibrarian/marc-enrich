@@ -131,6 +131,16 @@ td.num { text-align: right; }
 .linkbtn { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 0.8rem; text-decoration: underline; text-underline-offset: 2px; }
 
 /* Mnemonic viewer */
+.filterbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 10px; background: var(--accent-soft); border-radius: var(--r); font-size: 0.88rem; }
+.filterbar .lbl { min-width: 0; overflow-wrap: anywhere; }
+.matchlist { max-height: 200px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 10px; }
+.matchlist button { display: grid; grid-template-columns: 5.5ch minmax(0, 1fr) auto; gap: 10px; align-items: baseline; width: 100%; text-align: left; padding: 6px 10px; border: 0; border-bottom: 1px solid var(--line); background: none; cursor: pointer; font-size: 0.86rem; color: var(--ink); }
+.matchlist button:last-child { border-bottom: 0; }
+.matchlist button:hover { background: var(--surface-2); }
+.matchlist button[aria-current="true"] { background: var(--accent-soft); font-weight: 600; }
+.matchlist .n, .matchlist .id { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.matchlist .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.matchlist .more { padding: 6px 10px; font-size: 0.82rem; color: var(--muted); }
 .viewer-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .nav { display: flex; gap: 6px; align-items: center; }
 .nav input { width: 7ch; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); text-align: right; font-variant-numeric: tabular-nums; }
@@ -273,6 +283,8 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
           <label class="check" style="margin-left:6px"><input type="checkbox" id="wrapLines"> Wrap</label>
         </div>
       </div>
+      <div class="filterbar" id="viewFilter" hidden></div>
+      <div class="matchlist" id="matchList" hidden></div>
       <pre class="mrk" id="mrkView"></pre>
       <div class="btnrow" style="margin-top:12px">
         <button class="btn" id="dlMrk" type="button">Break → .mrk</button>
