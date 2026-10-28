@@ -68,9 +68,14 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => (t.hidden = true), 3800);
   }
+  let logTimer = 0;
   function log(line) {
     S.log.push(line);
-    if (S.log.length > 300) S.log.shift();
+    if (S.log.length > 300) S.log.splice(0, S.log.length - 300);
+    if (!logTimer) logTimer = setTimeout(flushLog, 200);
+  }
+  function flushLog() {
+    logTimer = 0;
     const el = $("#runLog");
     el.textContent = S.log.join("\n");
     el.scrollTop = el.scrollHeight;
@@ -528,7 +533,16 @@ Reply with JSON only and nothing else:
     };
   }
 
+  // The radio the user sees decides the task (browsers restore form state after scripts run).
+  function syncTask() {
+    const r = $("input[name=task]:checked");
+    if (r && r.value !== S.task) { S.task = r.value; showTaskOpts(); }
+    return S.task;
+  }
+  const runLabel = (task, resume) => task === "awards" ? "Match awards" : resume ? "Resume lookups" : "Run lookups";
+
   async function findRecords() {
+    syncTask();
     if (!S.src) return toast("Load a file first.");
     if (S.run.active) return toast("Wait for the current run to finish or stop it.");
     const o = opts();
@@ -572,6 +586,8 @@ Reply with JSON only and nothing else:
       + (o.task === "summary" || (o.task === "series" && o.serMode === "none") ? `<p class="muted" style="font-size:.88rem">${fmt(noIsbn)} of these ${noIsbn === 1 ? "has" : "have"} no ISBN${o.task === "summary" && !o.srcTitle ? " and will be skipped" : ""}.</p>` : "")
       + `<ul style="margin:8px 0 0;padding-left:20px;font-size:.9rem">${S.found.slice(0, 5).map((c) => `<li>${esc(c.title)}${c.author ? ` <span class="muted">— ${esc(c.author)}</span>` : ""}</li>`).join("")}</ul>`;
     $("#runBtn").disabled = !S.found.length;
+    $("#runBtn").textContent = runLabel(o.task, false);
+    if (S.found.length) res.insertAdjacentHTML("beforeend", `<p class="note" style="margin-top:10px">Next: click <strong>${runLabel(o.task, false)}</strong>, then go to <strong>Review</strong> to approve the results.</p>`);
     renderReviewCounts();
   }
 
@@ -598,8 +614,10 @@ Reply with JSON only and nothing else:
         const k = next++;
         if (k >= items.length) return;
         await fn(items[k]);
+        if (performance.now() - lastYield > 40) { lastYield = performance.now(); await tick(); }
       }
     }
+    let lastYield = performance.now();
     await Promise.all(Array.from({ length: Math.max(1, n) }, worker));
   }
 
@@ -631,7 +649,8 @@ Reply with JSON only and nothing else:
     let done = 0;
     log(`Starting ${S.foundTask} lookups for ${fmt(items.length)} records with ${o.concurrency} at a time.`);
     const t0 = Date.now();
-    await pool(items, o.concurrency, async (c) => {
+    let lastUi = 0;
+    await pool(items, S.foundTask === "awards" ? 1 : o.concurrency, async (c) => {
       c.opts = o;
       try {
         await PROCESS[S.foundTask](c, o);
@@ -642,16 +661,21 @@ Reply with JSON only and nothing else:
       }
       done++;
       if (S.processed[S.foundTask] && c.status !== "error") S.processed[S.foundTask].add(c.i);
-      log(`#${c.i + 1} ${c.title.slice(0, 60)} — ${statusLabel(c.status)}${c.note ? ": " + c.note : ""}`);
-      updateRunStats(done, items.length, t0);
-      scheduleReviewRender();
+      if (S.foundTask !== "awards" || c.status !== "nosource") log(`#${c.i + 1} ${c.title.slice(0, 60)} — ${statusLabel(c.status)}${c.note ? ": " + c.note : ""}`);
+      if (done === items.length || performance.now() - lastUi > 200) {
+        lastUi = performance.now();
+        updateRunStats(done, items.length, t0);
+        scheduleReviewRender();
+      }
     });
     const secs = Math.round((Date.now() - t0) / 1000);
+    if (S.foundTask === "awards") { const n = S.found.filter((c) => c.status === "nosource").length; if (n) log(`${fmt(n)} records are not winners in the selected lists.`); }
     log(S.run.stop ? `Stopped after ${fmt(done)} records.` : `Finished ${fmt(done)} records in ${secs}s.`);
+    flushLog();
     S.run.active = false;
     $("#pauseBtn").hidden = true; $("#stopBtn").hidden = true; $("#findBtn").disabled = false;
     $("#runBtn").disabled = !S.found.some((c) => c.status === "queued" || c.status === "error");
-    $("#runBtn").textContent = S.found.some((c) => c.status === "queued" || c.status === "error") ? "Resume lookups" : "Run lookups";
+    $("#runBtn").textContent = runLabel(S.foundTask, S.found.some((c) => c.status === "queued" || c.status === "error"));
     updateRunStats(done, items.length);
     renderReview();
     if (!S.run.stop) toast("Lookups finished. Review the results.");
@@ -1374,6 +1398,7 @@ Reply with JSON only and nothing else:
   function selectTab(name) {
     for (const t of $$(".step")) t.setAttribute("aria-selected", String(t.id === "tab-" + name));
     for (const p of $$(".panel")) p.hidden = p.id !== "p-" + name;
+    if (name === "task") syncTask();
     if (name === "review") renderReview();
     if (name === "export") renderExport();
     if (name === "records") renderViewer();
@@ -1384,6 +1409,7 @@ Reply with JSON only and nothing else:
     $("#aiBox").hidden = S.task === "find" || S.task === "awards";
     $("#runBtn").hidden = S.task === "find";
     $("#runBtn").disabled = !(S.foundTask === S.task && S.found.some((c) => c.status === "queued" || c.status === "error"));
+    $("#runBtn").textContent = runLabel(S.task, S.foundTask === S.task && S.found.some((c) => c.status !== "queued" && c.status !== "working"));
   }
 
   // ---------- events ----------
@@ -1542,6 +1568,9 @@ Reply with JSON only and nothing else:
   wire();
   showTaskOpts();
   loadSample().then(() => selectTab("records"));
+  // after the browser restores form state (reload, back button), follow the visible radio
+  window.addEventListener("pageshow", () => setTimeout(syncTask, 0));
+  setTimeout(syncTask, 0);
 
   // exposed for tests
   window.MarcEnrichTest = { splitSeries, fieldFromMarcKey, buildFields, norm, cleanDesc, applyChanges, recordTitles, recordYears, S };
