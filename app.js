@@ -1111,16 +1111,14 @@ Reply with JSON only and nothing else:
         ${c.status === "rejected" ? `<button class="btn small" data-act="unreject" data-k="${k}">Undo</button>` : `<button class="btn small bad" data-act="reject" data-k="${k}">Reject</button>`}
         ${["error", "nosource", "skipped", "nomatch"].includes(c.status) ? `<button class="btn small" data-act="retry" data-k="${k}">Retry</button>` : ""}
       </div></div>`;
-    // The full record, with the fields this task's decision rests on highlighted
-    const KEY = {
-      awards: /^(008|046|100|110|130|240|245|246|26[04]|500|508|511|518|586|593|700|710|730)$/,
-      summary: /^(020|100|110|245|250|26[04]|500|520)$/,
-      series: /^(020|100|245|26[04]|490|800|810|811|830)$/,
-    }[task] || /^245$/;
+    // Key fields from the record (hand edits included), in record order
+    const SHOW_TAGS = /^(245|246|264|300|500|505|700)$/;
     let marc;
-    try { marc = M.toMnemonic(baseRecord(c.i)).split("\n").map((l) => hiLine(l, false, KEY.test(l.slice(1, 4)))).join("\n"); }
-    catch (e) { marc = `<span class="m-esc">This record could not be read: ${esc(e.message)}</span>`; }
-    const record = `<details class="recmarc" ${c.status === "review" ? "open" : ""}><summary>MARC record <span class="mono muted">#${c.i + 1}</span> <span class="muted">· highlighted fields are the ones the match checks</span></summary><pre class="mrk wrap-lines">${marc}</pre></details>`;
+    try {
+      const lines = baseRecord(c.i).fields.filter((f) => SHOW_TAGS.test(f.tag)).map((f) => hiLine(M.fieldToMnemonic(f), false));
+      marc = lines.length ? lines.join("\n") : '<span class="muted">None of these fields in this record.</span>';
+    } catch (e) { marc = `<span class="m-esc">This record could not be read: ${esc(e.message)}</span>`; }
+    const record = `<details class="recmarc" ${c.status === "review" ? "open" : ""}><summary>Record fields <span class="mono muted">#${c.i + 1} · 245 246 264 300 500 505 700</span></summary><pre class="mrk wrap-lines">${marc}</pre></details>`;
     return `<article class="card ${c.status === "approved" ? "approved" : ""}" data-card="${k}">${head}<div class="card-body"><div class="src">${srcs}</div><div class="prop">${prop}${preview}</div></div>${record}${foot}</article>`;
   }
   const wordCount = (s) => (String(s || "").trim().match(/\S+/g) || []).length;
@@ -1536,6 +1534,31 @@ Reply with JSON only and nothing else:
 
     $("#filters").addEventListener("click", (e) => { const b = e.target.closest("[data-filter]"); if (!b) return; S.filter = b.dataset.filter; S.shown = 50; renderReview(); });
     $("#moreCards").addEventListener("click", () => { S.shown += 50; renderReview(); });
+    // Approve every card in the current view. Needs-choice award cards get all their awards ticked.
+    let armTimer = 0;
+    const viewBtn = $("#approveView");
+    const disarm = () => { clearTimeout(armTimer); viewBtn.dataset.armed = ""; viewBtn.classList.remove("primary"); viewBtn.textContent = "Approve all in this view"; };
+    viewBtn.addEventListener("click", () => {
+      const fn = FILTERS.find((f) => f[0] === S.filter)[2];
+      const list = S.found.filter((c) => fn(c) && c.status !== "approved" && c.status !== "rejected" && ["ready", "review", "nomatch"].includes(c.status));
+      if (!list.length) return toast("Nothing in this view can be approved.");
+      if (!viewBtn.dataset.armed) {
+        const choice = list.filter((c) => c.status === "review").length;
+        viewBtn.dataset.armed = "1";
+        viewBtn.classList.add("primary");
+        viewBtn.textContent = `Click again to approve ${fmt(list.length)}${choice ? ` (incl. ${fmt(choice)} title-only)` : ""}`;
+        armTimer = setTimeout(disarm, 6000);
+        return;
+      }
+      disarm();
+      let n = 0, skipped = 0;
+      for (const c of list) {
+        if (S.foundTask === "awards") for (const m of c.props.matches || []) if (!m.already) m.checked = true;
+        if (buildFields(c, S.foundTask).length) { setApproved(c, true); n++; } else skipped++;
+      }
+      renderReview();
+      toast(`Approved ${fmt(n)} records.` + (skipped ? ` ${fmt(skipped)} had nothing to add (no summary written or no authority chosen).` : ""));
+    });
     $("#approveAll").addEventListener("click", () => {
       let n = 0;
       for (const c of S.found) if (c.status === "ready" && buildFields(c, S.foundTask).length) { setApproved(c, true); n++; }
