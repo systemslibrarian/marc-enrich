@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MARC-Enrich</title>
+<meta name="description" content="Break MARC records to text, find records missing summaries or series, and draft 520, 490 and 830 fields from real sources for cataloger review.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: one working column; a file bar on top, four sequential steps as tabs, MARC shown in mnemonic form throughout. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --ink: #172030;
+  --muted: #5a6678;
+  --line: #d8dee8;
+  --accent: #1d4ea8;
+  --accent-ink: #ffffff;
+  --accent-soft: #e3ebfa;
+  --tag: #1d4ea8;
+  --ind: #946600;
+  --code: #8a2f8f;
+  --ok: #1e7a46;
+  --ok-soft: #e2f3e9;
+  --warn: #8f5b00;
+  --warn-soft: #fbf0db;
+  --bad: #b3261e;
+  --bad-soft: #fbe5e3;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --r: 6px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --surface: #151c26; --surface-2: #1b2430; --ink: #e4e9f0; --muted: #97a3b4;
+    --line: #2a3442; --accent: #86a9ff; --accent-ink: #0b1220; --accent-soft: #1c2a46; --tag: #8fb0ff;
+    --ind: #e0b552; --code: #e08be6; --ok: #5ccf8d; --ok-soft: #13301f; --warn: #f0b450; --warn-soft: #33270f;
+    --bad: #ff8a80; --bad-soft: #3a1714; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --surface: #151c26; --surface-2: #1b2430; --ink: #e4e9f0; --muted: #97a3b4;
+  --line: #2a3442; --accent: #86a9ff; --accent-ink: #0b1220; --accent-soft: #1c2a46; --tag: #8fb0ff;
+  --ind: #e0b552; --code: #e08be6; --ok: #5ccf8d; --ok-soft: #13301f; --warn: #f0b450; --warn-soft: #33270f;
+  --bad: #ff8a80; --bad-soft: #3a1714; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; letter-spacing: 0.01em; }
+h2 { font-size: 1.35rem; }
+h3 { font-size: 1.05rem; }
+p { margin: 0; }
+a { color: var(--accent); }
+small, .muted { color: var(--muted); }
+code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+/* Header */
+.masthead { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; padding-block: 28px 18px; }
+.brand { display: flex; flex-direction: column; gap: 4px; }
+.brand h1 { font-size: 2rem; line-height: 1; }
+.brand h1 span { color: var(--accent); }
+.brand .field-line { font-family: var(--font-mono); font-size: 0.85rem; color: var(--muted); }
+.masthead p { max-width: 52ch; color: var(--muted); font-size: 0.95rem; }
+
+/* File bar */
+.filebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; }
+.drop { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.drop.over { outline: 2px dashed var(--accent); outline-offset: 6px; border-radius: var(--r); }
+.drop-icon { flex: none; width: 40px; height: 48px; border: 1.5px solid var(--line); border-radius: 4px; position: relative; background: var(--surface-2); }
+.drop-icon::before, .drop-icon::after { content: ""; position: absolute; left: 7px; right: 7px; height: 2px; background: var(--muted); opacity: .5; }
+.drop-icon::before { top: 14px; box-shadow: 0 7px 0 var(--muted), 0 14px 0 var(--muted); }
+.fileinfo { min-width: 0; }
+.fileinfo strong { display: block; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip { font-size: 0.8rem; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chip.sample { background: var(--warn-soft); color: var(--warn); }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); padding: 7px 14px; border-radius: var(--r); cursor: pointer; font-weight: 500; white-space: nowrap; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 4px 10px; font-size: 0.85rem; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.ok { color: var(--ok); }
+.btn.bad { color: var(--bad); }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* Steps */
+.steps { display: flex; gap: 2px; margin-top: 22px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.step { appearance: none; border: 0; background: none; padding: 10px 16px 9px; cursor: pointer; font-family: var(--font-display); font-weight: 600; font-size: 1rem; color: var(--muted); border-bottom: 3px solid transparent; white-space: nowrap; }
+.step b { font-family: var(--font-mono); font-weight: 500; font-size: 0.8rem; margin-right: 6px; opacity: .8; }
+.step[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.step .count { font-family: var(--font-body); font-size: 0.75rem; font-weight: 500; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 1px 7px; margin-left: 6px; }
+.panel { padding-top: 22px; display: grid; gap: 18px; }
+
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; min-width: 0; }
+.box > h3 { margin-bottom: 10px; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 820px) { .grid2 { grid-template-columns: minmax(0, 1fr); } .filebar { grid-template-columns: minmax(0, 1fr); } }
+
+/* Tag table */
+.tagtable-wrap { max-height: 520px; overflow: auto; margin: 0 -4px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 0.88rem; }
+th { font-weight: 600; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; position: sticky; top: 0; background: var(--surface); }
+td.tag { font-family: var(--font-mono); color: var(--tag); font-weight: 500; }
+td.num { text-align: right; }
+.bar { height: 4px; background: var(--surface-2); border-radius: 2px; margin-top: 3px; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; opacity: .65; }
+.linkbtn { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 0.8rem; text-decoration: underline; text-underline-offset: 2px; }
+
+/* Mnemonic viewer */
+.viewer-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.nav { display: flex; gap: 6px; align-items: center; }
+.nav input { width: 7ch; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); text-align: right; font-variant-numeric: tabular-nums; }
+pre.mrk { margin: 0; padding: 12px 14px; background: var(--surface-2); border-radius: var(--r); font: 0.84rem/1.6 var(--font-mono); overflow-x: auto; white-space: pre; }
+pre.mrk.wrap-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
+.m-tag { color: var(--tag); font-weight: 500; }
+.m-ind { color: var(--ind); }
+.m-code { color: var(--code); font-weight: 500; }
+.m-esc { color: var(--warn); }
+.m-new { background: var(--ok-soft); display: inline-block; width: 100%; }
+
+/* Forms */
+.tasks { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.task { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 4px 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); cursor: pointer; }
+.task input { margin-top: 4px; accent-color: var(--accent); }
+.task strong { font-family: var(--font-display); font-size: 1.02rem; }
+.task .mono { color: var(--tag); }
+.task p { grid-column: 2; color: var(--muted); font-size: 0.88rem; }
+.task:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.form { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px 20px; }
+.fld { display: grid; gap: 4px; min-width: 0; }
+.fld > span { font-size: 0.82rem; font-weight: 600; }
+.fld small { font-size: 0.78rem; }
+.fld input[type=text], .fld input[type=password], .fld input[type=number], .fld select, textarea {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); min-width: 0; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 0.9rem; }
+.check input { margin-top: 4px; accent-color: var(--accent); }
+.radios { display: grid; gap: 6px; }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+legend { font-size: 0.82rem; font-weight: 600; padding: 0; margin-bottom: 6px; }
+details.box > summary { cursor: pointer; font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; }
+details.box[open] > summary { margin-bottom: 14px; }
+.note { font-size: 0.85rem; color: var(--muted); border-left: 3px solid var(--line); padding-left: 10px; }
+.note.warn { border-left-color: var(--warn); }
+
+/* Progress */
+.progress { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.statline { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.log { font: 0.8rem/1.5 var(--font-mono); color: var(--muted); max-height: 140px; overflow: auto; background: var(--surface-2); border-radius: var(--r); padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Status pills */
+.pill { display: inline-block; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.pill.ready, .pill.review { background: var(--accent-soft); color: var(--accent); }
+.pill.approved { background: var(--ok-soft); color: var(--ok); }
+.pill.rejected, .pill.error { background: var(--bad-soft); color: var(--bad); }
+.pill.nosource, .pill.skipped, .pill.nomatch { background: var(--warn-soft); color: var(--warn); }
+
+/* Review */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.filter { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.filter[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.cards { display: grid; gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); display: grid; min-width: 0; }
+.card.approved { border-color: var(--ok); }
+.card-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.card-head .t { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.card-head .meta { font-size: 0.82rem; color: var(--muted); font-family: var(--font-mono); overflow-wrap: anywhere; }
+.card-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; padding: 12px 14px; }
+@media (max-width: 760px) { .card-body { grid-template-columns: minmax(0, 1fr); } }
+.src { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.src-item { font-size: 0.86rem; background: var(--surface-2); border-radius: var(--r); padding: 8px 10px; max-height: 190px; overflow: auto; overflow-wrap: anywhere; }
+.src-item b { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.prop { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.prop textarea { min-height: 110px; resize: vertical; line-height: 1.5; }
+.cands { display: grid; gap: 6px; }
+.cand { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 2px 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; font-size: 0.86rem; }
+.cand:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.cand input { margin-top: 3px; accent-color: var(--accent); }
+.cand small { grid-column: 2; overflow-wrap: anywhere; }
+.card-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface-2); border-radius: 0 0 var(--r) var(--r); }
+.card-foot .why { font-size: 0.82rem; color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.empty { text-align: center; padding: 36px 16px; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--r); }
+
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: var(--r); font-size: 0.9rem; max-width: calc(100% - 32px); z-index: 20; }
+footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="brand">
+    <h1>MARC-<span>Enrich</span></h1>
+    <div class="field-line" aria-hidden="true">=520&nbsp;&nbsp;\\$aSummary drafted from a real source, approved by you.</div>
+  </div>
+  <p>Break MARC records to readable text, find the ones missing a summary or series, look up real sources, and approve every change before it goes back to your ILS. Your file never leaves this browser except for the lookups you run.</p>
+</header>
+
+<section class="filebar" aria-label="File">
+  <label class="drop" id="drop">
+    <span class="drop-icon" aria-hidden="true"></span>
+    <span class="fileinfo">
+      <strong id="fileName">No file loaded</strong>
+      <span class="muted" id="fileHint">Drop a .mrc (binary) or .mrk (MarcEdit text) file here, or choose one.</span>
+      <span class="chips" id="fileChips"></span>
+    </span>
+    <input type="file" id="fileInput" accept=".mrc,.mrk,.marc,.dat,.txt" hidden>
+  </label>
+  <div class="btnrow">
+    <button class="btn primary" id="chooseBtn" type="button">Choose file</button>
+    <button class="btn" id="sampleBtn" type="button">Load sample</button>
+  </div>
+</section>
+
+<nav class="steps" role="tablist" aria-label="Steps">
+  <button class="step" role="tab" id="tab-records" aria-controls="p-records" aria-selected="true"><b>1</b>Records</button>
+  <button class="step" role="tab" id="tab-task" aria-controls="p-task" aria-selected="false"><b>2</b>Task</button>
+  <button class="step" role="tab" id="tab-review" aria-controls="p-review" aria-selected="false"><b>3</b>Review<span class="count" id="reviewCount" hidden></span></button>
+  <button class="step" role="tab" id="tab-export" aria-controls="p-export" aria-selected="false"><b>4</b>Export<span class="count" id="exportCount" hidden></span></button>
+</nav>
+
+<!-- 1 RECORDS -->
+<section class="panel" id="p-records" role="tabpanel" aria-labelledby="tab-records">
+  <div class="grid2">
+    <div class="box">
+      <h3>Field counts</h3>
+      <p class="muted" style="font-size:.85rem;margin-bottom:8px">How many records carry each tag. Use <em>Find missing</em> to list records without it.</p>
+      <div class="tagtable-wrap"><table id="tagTable"><thead><tr><th>Tag</th><th>Field</th><th class="num">Records</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="box">
+      <div class="viewer-head">
+        <h3>Record view <small class="mono" id="viewEnc"></small></h3>
+        <div class="nav">
+          <button class="btn small" id="prevRec" type="button" aria-label="Previous record">‹</button>
+          <input id="recNo" type="number" min="1" value="1" aria-label="Record number">
+          <span class="muted" id="recOf">of 0</span>
+          <button class="btn small" id="nextRec" type="button" aria-label="Next record">›</button>
+          <label class="check" style="margin-left:6px"><input type="checkbox" id="wrapLines"> Wrap</label>
+        </div>
+      </div>
+      <pre class="mrk" id="mrkView"></pre>
+      <div class="btnrow" style="margin-top:12px">
+        <button class="btn" id="dlMrk" type="button">Break → .mrk</button>
+        <button class="btn" id="dlMrc" type="button">Make → .mrc</button>
+        <span class="muted" style="font-size:.85rem" id="convertMsg"></span>
+      </div>
+      <div class="log" id="loadLog" hidden style="margin-top:12px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 TASK -->
+<section class="panel" id="p-task" role="tabpanel" aria-labelledby="tab-task" hidden>
+  <div class="box">
+    <h3>What do you want to do?</h3>
+    <div class="tasks" role="radiogroup" aria-label="Task">
+      <label class="task"><input type="radio" name="task" value="summary" checked><strong>Add summaries <span class="mono">520</span></strong>
+        <p>Find records with no 520, pull descriptions from Open Library and Google Books, and have AI condense them into a neutral summary note.</p></label>
+      <label class="task"><input type="radio" name="task" value="series"><strong>Add series <span class="mono">490 / 830</span></strong>
+        <p>Trace untraced 490s, or find series for records with none, and match each to a Library of Congress series authority.</p></label>
+      <label class="task"><input type="radio" name="task" value="find"><strong>Find records by field</strong>
+        <p>List records that are missing (or have) any tags you name. Export the list or just those records. No lookups.</p></label>
+    </div>
+  </div>
+
+  <!-- summary options -->
+  <div class="box" data-opts="summary">
+    <h3>Summary options</h3>
+    <div class="form">
+      <label class="fld"><span>Record types</span>
+        <select id="sumType"><option value="text">Books and text (Leader/06 a, t)</option><option value="all">All record types</option></select></label>
+      <label class="fld"><span>How many records this run</span>
+        <input type="number" id="sumLimit" min="0" value="200"><small>Start with a sample you can check by hand. 0 = all.</small></label>
+      <label class="fld"><span>Maximum words</span><input type="number" id="sumWords" min="15" max="200" value="60"></label>
+      <label class="fld"><span>520 first indicator</span>
+        <select id="sumInd1"><option value=" ">blank — Summary</option><option value="0">0 — Subject</option><option value="2">2 — Scope and content</option><option value="3">3 — Abstract</option><option value="8">8 — No display constant</option></select></label>
+      <label class="fld"><span>$c Assigning source</span>
+        <input type="text" id="sumC" value="AI-assisted summary from {source}"><small>{source} becomes the source used. Leave empty to omit $c.</small></label>
+      <label class="fld"><span>Extra 500 note (optional)</span>
+        <input type="text" id="sumNote" value="" placeholder="e.g. Summary generated with AI assistance; verify before use."></label>
+    </div>
+    <fieldset style="margin-top:14px"><legend>Where to look</legend>
+      <div class="radios">
+        <label class="check"><input type="checkbox" id="srcOL" checked> Open Library work descriptions (by ISBN)</label>
+        <label class="check"><input type="checkbox" id="srcGB" checked> Google Books descriptions (by ISBN)</label>
+        <label class="check"><input type="checkbox" id="srcTitle"> Search by title and author when there's no ISBN <small>(less reliable — review closely)</small></label>
+        <label class="check"><input type="checkbox" id="sumNoAI"> Fetch sources only, no AI <small>(write the summaries yourself in Review)</small></label>
+      </div>
+    </fieldset>
+    <p class="note" style="margin-top:14px">AI only condenses what a source says about this book. If no source describes it, the record is skipped instead of guessed at. Publisher descriptions are never copied in verbatim.</p>
+  </div>
+
+  <!-- series options -->
+  <div class="box" data-opts="series" hidden>
+    <h3>Series options</h3>
+    <fieldset><legend>Which records</legend>
+      <div class="radios">
+        <label class="check"><input type="radio" name="serMode" value="untraced" checked> Has a 490 but no 800/810/811/830 <small>(untraced series — uses your own 490)</small></label>
+        <label class="check"><input type="radio" name="serMode" value="none"> No series fields at all <small>(looks up series from Open Library and Google Books)</small></label>
+      </div>
+    </fieldset>
+    <div class="form" style="margin-top:14px">
+      <label class="fld"><span>Record types</span>
+        <select id="serType"><option value="text">Books and text (Leader/06 a, t)</option><option value="all">All record types</option></select></label>
+      <label class="fld"><span>How many records this run</span><input type="number" id="serLimit" min="0" value="200"><small>0 = all.</small></label>
+    </div>
+    <div class="radios" style="margin-top:14px">
+      <label class="check"><input type="checkbox" id="serAdd490" checked> Add a 490 1\ when the record has none</label>
+      <label class="check"><input type="checkbox" id="serUri" checked> Add $0 with the id.loc.gov authority URI</label>
+      <label class="check"><input type="checkbox" id="serAI" checked> Use AI to choose when several authorities are close <small>(exact matches never need it)</small></label>
+    </div>
+    <p class="note" style="margin-top:14px">830 headings come only from the Library of Congress Name Authority File (id.loc.gov). The AI may pick among real authorities or decline; it never writes a heading itself.</p>
+  </div>
+
+  <!-- find options -->
+  <div class="box" data-opts="find" hidden>
+    <h3>Find options</h3>
+    <div class="form">
+      <label class="fld"><span>Tags</span><input type="text" id="findTags" value="520" placeholder="e.g. 520, 650"><small>Comma-separated. Ranges like 6XX work.</small></label>
+      <label class="fld"><span>Condition</span>
+        <select id="findCond"><option value="missingAll">Missing all of these</option><option value="missingAny">Missing any of these</option><option value="hasAny">Has any of these</option></select></label>
+      <label class="fld"><span>Record types</span>
+        <select id="findType"><option value="all">All record types</option><option value="text">Books and text (Leader/06 a, t)</option></select></label>
+    </div>
+  </div>
+
+  <details class="box" id="aiBox" open>
+    <summary>AI and lookup settings</summary>
+    <div class="form">
+      <label class="fld"><span>Anthropic API key</span><input type="password" id="apiKey" autocomplete="off" placeholder="sk-ant-…">
+        <small>Sent only to the endpoint below. Kept in memory unless you tick Remember.</small></label>
+      <label class="fld"><span>Model</span><input type="text" id="model" list="models" value="claude-haiku-5-5">
+        <datalist id="models"><option value="claude-haiku-5-5"><option value="claude-sonnet-5-5"><option value="claude-opus-5-5"></datalist>
+        <small>Haiku is fast and inexpensive for short notes.</small></label>
+      <label class="fld"><span>API endpoint</span><input type="text" id="endpoint" value="https://api.anthropic.com/v1/messages">
+        <small>Point at your own proxy to keep the key off staff machines.</small></label>
+      <label class="fld"><span>Google Books API key (optional)</span><input type="password" id="gbKey" autocomplete="off">
+        <small>Raises Google's daily limit for large runs.</small></label>
+      <label class="fld"><span>Lookups at once</span><input type="number" id="concurrency" min="1" max="8" value="3"></label>
+    </div>
+    <label class="check" style="margin-top:10px"><input type="checkbox" id="rememberKey"> Remember API keys on this device</label>
+  </details>
+
+  <div class="box">
+    <div class="btnrow">
+      <button class="btn" id="findBtn" type="button">Find records</button>
+      <button class="btn primary" id="runBtn" type="button" disabled>Run lookups</button>
+      <button class="btn" id="pauseBtn" type="button" hidden>Pause</button>
+      <button class="btn bad" id="stopBtn" type="button" hidden>Stop</button>
+    </div>
+    <div id="findResult" style="margin-top:14px" hidden></div>
+    <div id="runBox" style="margin-top:14px;display:grid;gap:8px" hidden>
+      <div class="progress"><i id="runBar"></i></div>
+      <div class="statline" id="runStats"></div>
+      <div class="log" id="runLog"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 REVIEW -->
+<section class="panel" id="p-review" role="tabpanel" aria-labelledby="tab-review" hidden>
+  <div class="btnrow" style="justify-content:space-between">
+    <div class="filters" id="filters"></div>
+    <div class="btnrow">
+      <button class="btn small ok" id="approveAll" type="button">Approve all ready</button>
+    </div>
+  </div>
+  <div class="cards" id="cards"></div>
+  <div class="btnrow" style="justify-content:center"><button class="btn" id="moreCards" type="button" hidden>Show more</button></div>
+</section>
+
+<!-- 4 EXPORT -->
+<section class="panel" id="p-export" role="tabpanel" aria-labelledby="tab-export" hidden>
+  <div class="box">
+    <h3>Approved changes</h3>
+    <div id="exportSummary" class="statline" style="margin-bottom:14px"></div>
+    <fieldset><legend>What to export</legend>
+      <div class="radios">
+        <label class="check"><input type="radio" name="expScope" value="changed" checked> Changed records only <small>(recommended for an overlay load)</small></label>
+        <label class="check"><input type="radio" name="expScope" value="all"> The whole file, with changes applied</label>
+      </div>
+    </fieldset>
+    <div class="btnrow" style="margin-top:14px">
+      <button class="btn primary" id="expMrc" type="button">Download .mrc</button>
+      <button class="btn" id="expMrk" type="button">Download .mrk</button>
+      <button class="btn" id="expCsv" type="button">Download report .csv</button>
+    </div>
+    <div class="log" id="expLog" hidden style="margin-top:12px"></div>
+  </div>
+  <div class="box">
+    <h3>Loading back into your ILS</h3>
+    <div style="display:grid;gap:8px;font-size:.92rem;max-width:72ch">
+      <p>Load the changed-records file with an overlay profile that matches on the field holding your record key. In this file that is usually <span class="mono" id="keyHint">001</span>.</p>
+      <p>Make sure your load profile protects local 520, 490 and 830 fields from being wiped by a later OCLC overlay.</p>
+      <p>Open the .mrk in MarcEdit and run Validate before loading if you want a second check.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Sources: Open Library, Google Books, Library of Congress id.loc.gov. AI by the Anthropic API with your own key.</p>
+  <p>Mnemonic format follows MarcEdit's MarcBreaker conventions: blanks as <span class="mono">\</span>, <span class="mono">{dollar}</span> for $, and MARC-8 bytes as <span class="mono">{0xHH}</span>.</p>
+</footer>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="marc-core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
