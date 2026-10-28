@@ -74,14 +74,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
 
 /* Header */
-.masthead { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; padding-block: 28px 18px; }
-.brand { display: flex; flex-direction: column; gap: 4px; }
-.brand h1 { font-size: 2rem; line-height: 1; }
+.masthead { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 24px; align-items: center; padding-block: 28px 20px; }
+.brand { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.brand h1 { font-size: 2.25rem; line-height: 1; }
 .brand h1 span { color: var(--accent); }
-.brand .field-line { font-family: var(--font-mono); font-size: 0.85rem; color: var(--muted); }
-.masthead p { max-width: 52ch; color: var(--muted); font-size: 0.95rem; }
-.intro { display: grid; gap: 8px; max-width: 52ch; }
-.sitenav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9rem; font-weight: 600; }
+.brand .field-line { font-family: var(--font-mono); font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
+.masthead .lede { grid-column: 1 / -1; max-width: 75ch; color: var(--muted); font-size: 1rem; line-height: 1.6; }
+.sitenav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9rem; font-weight: 600; align-self: start; padding-top: 8px; }
+@media (max-width: 600px) { .masthead { grid-template-columns: minmax(0, 1fr); } .sitenav { grid-row: 3; padding-top: 0; } }
 .sitenav a { text-decoration: none; }
 .sitenav a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
@@ -253,13 +253,11 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
     <h1>MARC-<span>Enrich</span></h1>
     <div class="field-line" aria-hidden="true">=520&nbsp;&nbsp;\\$aSummary drafted from a real source, approved by you.</div>
   </div>
-  <div class="intro">
-    <p>Break MARC records to readable text, find the ones missing a summary or series, look up real sources, and approve every change before it goes back to your ILS. Your file never leaves this browser except for the lookups you run.</p>
-    <nav class="sitenav" aria-label="Site">
-      <a href="awards.html">Award data</a>
-      <a href="https://github.com/systemslibrarian/marc-enrich" target="_blank" rel="noopener">Source on GitHub</a>
-    </nav>
-  </div>
+  <nav class="sitenav" aria-label="Site">
+    <a href="awards.html">Award data</a>
+    <a href="https://github.com/systemslibrarian/marc-enrich" target="_blank" rel="noopener">Source on GitHub</a>
+  </nav>
+  <p class="lede">Break MARC records to readable text, find the ones missing a summary, series or award note, look up real sources, and approve every change before it goes back to your ILS. Your file never leaves this browser except for the lookups you run.</p>
 </header>
 
 <section class="filebar" aria-label="File">
