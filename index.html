@@ -134,8 +134,16 @@ td.num { text-align: right; }
 .filterbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 10px; background: var(--accent-soft); border-radius: var(--r); font-size: 0.88rem; }
 .filterbar .lbl { min-width: 0; overflow-wrap: anywhere; }
 .matchlist { max-height: 200px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 10px; }
+.matchlist .mrow { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; border-bottom: 1px solid var(--line); }
+.matchlist .mrow:last-child { border-bottom: 0; }
+.matchlist .mrow input { margin: 0 0 0 10px; accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+.matchlist .mrow.off .t { color: var(--muted); text-decoration: line-through; }
+.filterbar .sel { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.editbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 10px; background: var(--warn-soft); border-radius: var(--r); font-size: 0.86rem; }
+textarea.mrkedit { width: 100%; min-height: 380px; margin: 0 0 10px; padding: 12px 14px; font: 0.84rem/1.6 var(--font-mono); white-space: pre; overflow-wrap: normal; overflow-x: auto; resize: vertical; border: 1px solid var(--accent); border-radius: var(--r); background: var(--field); color: var(--ink); tab-size: 4; }
+textarea.mrkedit:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 .matchlist button { display: grid; grid-template-columns: 5.5ch minmax(0, 1fr) auto; gap: 10px; align-items: baseline; width: 100%; text-align: left; padding: 6px 10px; border: 0; border-bottom: 1px solid var(--line); background: none; cursor: pointer; font-size: 0.86rem; color: var(--ink); }
-.matchlist button:last-child { border-bottom: 0; }
+.matchlist button { border-bottom: 0; }
 .matchlist button:hover { background: var(--surface-2); }
 .matchlist button[aria-current="true"] { background: var(--accent-soft); font-weight: 600; }
 .matchlist .n, .matchlist .id { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -277,17 +285,25 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
     </div>
     <div class="box">
       <div class="viewer-head">
-        <h3>Record view <small class="mono" id="viewEnc"></small></h3>
+        <h3>Record view <small class="mono" id="viewEnc"></small> <span class="pill approved" id="editedPill" hidden>Edited</span></h3>
         <div class="nav">
           <button class="btn small" id="prevRec" type="button" aria-label="Previous record">‹</button>
           <input id="recNo" type="number" min="1" value="1" aria-label="Record number">
           <span class="muted" id="recOf">of 0</span>
           <button class="btn small" id="nextRec" type="button" aria-label="Next record">›</button>
           <label class="check" style="margin-left:6px"><input type="checkbox" id="wrapLines"> Wrap</label>
+          <button class="btn small" id="editBtn" type="button">Edit</button>
+          <button class="btn small" id="revertBtn" type="button" hidden>Revert</button>
         </div>
       </div>
       <div class="filterbar" id="viewFilter" hidden></div>
       <div class="matchlist" id="matchList" hidden></div>
+      <div class="editbar" id="editBar" hidden>
+        <span>Editing record <strong id="editWhich"></strong>. Use MarcEdit mnemonic format; <span class="mono">Ctrl+S</span> saves. Leader lengths are recalculated for you.</span>
+        <span class="btnrow"><button class="btn small primary" id="saveEdit" type="button">Save</button><button class="btn small" id="cancelEdit" type="button">Cancel</button></span>
+      </div>
+      <textarea class="mrkedit" id="mrkEdit" hidden spellcheck="false" autocomplete="off" aria-label="Record in mnemonic format"></textarea>
+      <div class="log" id="editErrors" hidden style="margin-bottom:10px"></div>
       <pre class="mrk" id="mrkView"></pre>
       <div class="btnrow" style="margin-top:12px">
         <button class="btn" id="dlMrk" type="button">Break → .mrk</button>

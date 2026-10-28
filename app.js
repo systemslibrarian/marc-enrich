@@ -37,6 +37,8 @@
     bad: [],
     view: 0,
     viewFilter: null,
+    edits: new Map(),   // record index -> record edited by hand in the Records view
+    editing: false,
     processed: { summary: new Set(), series: new Set() }, // records already looked up this session   // { label, hits: [record indexes], pos, titles: {} } while browsing Find results
     task: "summary",
     found: [],          // candidates from the latest lookup task
@@ -187,6 +189,7 @@
     S.src = src;
     S.found = []; S.foundTask = null; S.findHits = []; S.changes.clear(); S.exported = true; S.view = 0; S.viewFilter = null;
     S.processed = { summary: new Set(), series: new Set() };
+    S.edits.clear(); S.editing = false;
     $("#findResult").hidden = true; $("#runBox").hidden = true; $("#runBtn").disabled = true;
     await computeStats(warnings);
     renderAll();
@@ -978,7 +981,8 @@ Reply with JSON only and nothing else:
     const rc = $("#reviewCount");
     rc.hidden = !n; rc.textContent = fmt(n);
     const ec = $("#exportCount");
-    ec.hidden = !S.changes.size; ec.textContent = fmt(S.changes.size);
+    const nChanged = S.changes.size || S.edits.size ? changedIndexes().length : 0;
+    ec.hidden = !nChanged; ec.textContent = fmt(nChanged);
   }
 
   function hiLine(line, isNew) {
@@ -1105,8 +1109,10 @@ Reply with JSON only and nothing else:
       $("#recOf").textContent = "of " + fmt(src.count);
     }
     renderFilterBar();
+    renderEditState();
+    if (S.editing) return;
     try {
-      const rec = src.get(S.view);
+      const rec = baseRecord(S.view);
       $("#viewEnc").textContent = M.recordEncoding(rec.leader) === "utf8" ? "UTF-8" : "MARC-8";
       const ch = S.changes.get(S.view);
       let html = M.toMnemonic(rec).split("\n").map((l) => hiLine(l, false)).join("\n");
@@ -1127,18 +1133,83 @@ Reply with JSON only and nothing else:
     const list = $("#matchList");
     bar.hidden = list.hidden = !f;
     if (!f) return;
+    const nSel = f.hits.filter((i) => f.selected.has(i)).length;
     bar.innerHTML = `<span class="lbl">Filtered: <strong>${esc(f.label)}</strong> · ${fmt(f.hits.length)} record${f.hits.length === 1 ? "" : "s"}</span>
-      <button class="btn small" type="button" data-clear-filter>Clear filter</button>`;
+      <span class="sel"><span><strong>${fmt(nSel)}</strong> ticked</span>
+        <button class="btn small" type="button" data-sel-all>All</button><button class="btn small" type="button" data-sel-none>None</button>
+        <button class="btn small" type="button" data-sel-dl="mrc" ${nSel ? "" : "disabled"}>Download ticked .mrc</button>
+        <button class="btn small" type="button" data-sel-dl="mrk" ${nSel ? "" : "disabled"}>.mrk</button>
+        <button class="btn small" type="button" data-clear-filter>Clear filter</button></span>`;
     const SHOW = 300;
     const first = Math.max(0, Math.min(f.pos - 20, f.hits.length - SHOW));
     const slice = f.hits.slice(first, first + SHOW);
     list.innerHTML = slice.map((i, k) => {
-      if (!f.titles[i]) { try { const r = S.src.get(i); f.titles[i] = [recTitle(r), recId(r)]; } catch { f.titles[i] = ["(unreadable record)", ""]; } }
+      if (!f.titles[i]) { try { const r = baseRecord(i); f.titles[i] = [recTitle(r), recId(r)]; } catch { f.titles[i] = ["(unreadable record)", ""]; } }
       const [t, id] = f.titles[i];
-      return `<button type="button" data-pos="${first + k}" aria-current="${first + k === f.pos}"><span class="n">#${i + 1}</span><span class="t">${esc(t)}</span><span class="id">${esc(id)}</span></button>`;
+      const on = f.selected.has(i);
+      return `<div class="mrow ${on ? "" : "off"}"><input type="checkbox" data-sel="${i}" ${on ? "checked" : ""} aria-label="Include record ${i + 1}">
+        <button type="button" data-pos="${first + k}" aria-current="${first + k === f.pos}"><span class="n">#${i + 1}</span><span class="t">${esc(t)}${S.edits.has(i) ? " ✎" : ""}</span><span class="id">${esc(id)}</span></button></div>`;
     }).join("") + (f.hits.length > SHOW ? `<div class="more">Showing ${fmt(slice.length)} of ${fmt(f.hits.length)} near the current record. Use the arrows or record box to move through all of them.</div>` : "");
     const cur = list.querySelector('[aria-current="true"]');
     if (cur) { const top = cur.offsetTop - list.offsetTop; if (top < list.scrollTop || top > list.scrollTop + list.clientHeight - cur.offsetHeight) list.scrollTop = top - 60; }
+  }
+
+  // ---------- hand editing ----------
+  const baseRecord = (i) => (S.edits.has(i) ? M.cloneRecord(S.edits.get(i)) : S.src.get(i));
+
+  function renderEditState() {
+    const ed = S.editing;
+    $("#editBar").hidden = $("#mrkEdit").hidden = !ed;
+    $("#mrkView").hidden = ed;
+    if (!ed) $("#editErrors").hidden = true;
+    $("#editBtn").hidden = ed || !S.src;
+    $("#editedPill").hidden = !S.src || !S.edits.has(S.view);
+    $("#revertBtn").hidden = ed || !S.src || !S.edits.has(S.view);
+    for (const id of ["prevRec", "nextRec", "recNo"]) $("#" + id).disabled = ed;
+    for (const b of $$("#viewFilter button, #matchList button, #matchList input")) b.disabled = ed || (b.dataset.selDl && !S.viewFilter.hits.some((i) => S.viewFilter.selected.has(i)));
+  }
+
+  function startEdit() {
+    if (!S.src) return;
+    let text;
+    try { text = M.toMnemonic(baseRecord(S.view)); } catch (e) { return toast("This record can't be edited: " + e.message); }
+    S.editing = true;
+    const ta = $("#mrkEdit");
+    ta.value = text;
+    ta.rows = Math.min(40, text.split("\n").length + 2);
+    $("#editWhich").textContent = "#" + fmt(S.view + 1);
+    renderEditState();
+    ta.focus();
+  }
+
+  function cancelEdit() { S.editing = false; renderViewer(); }
+
+  function saveEdit() {
+    const errs = $("#editErrors");
+    const { records, warnings } = M.parseMnemonic($("#mrkEdit").value);
+    const problems = [...warnings];
+    if (records.length !== 1) problems.unshift(records.length ? `This holds ${records.length} records; edit one record at a time (no blank lines inside it).` : "There's no record here.");
+    const rec = records[0];
+    if (rec) {
+      for (const f of rec.fields) if (!/^[0-9A-Za-z]{3}$/.test(f.tag)) problems.push(`"${f.tag}" isn't a valid tag (three letters or digits).`);
+      try { M.buildRecord(rec); } catch (e) { problems.push(e.message); }
+    }
+    if (problems.length) { errs.hidden = false; errs.textContent = "Not saved:\n" + problems.join("\n"); return; }
+    let original = "";
+    try { original = M.toMnemonic(S.src.get(S.view)); } catch { /* unreadable original */ }
+    if (M.toMnemonic(rec) === original) S.edits.delete(S.view);
+    else { S.edits.set(S.view, rec); S.exported = false; }
+    if (S.viewFilter) delete S.viewFilter.titles[S.view];
+    S.editing = false;
+    renderViewer(); renderExport();
+    toast(S.edits.has(S.view) ? `Saved. Record #${fmt(S.view + 1)} is marked Edited and is included in exports.` : "No changes from the original.");
+  }
+
+  function revertEdit() {
+    S.edits.delete(S.view);
+    if (S.viewFilter) delete S.viewFilter.titles[S.view];
+    renderViewer(); renderExport();
+    toast(`Record #${fmt(S.view + 1)} is back to the original.`);
   }
 
   function renderTagTable() {
@@ -1179,8 +1250,9 @@ Reply with JSON only and nothing else:
   function renderExport() {
     const by = { summary: 0, series: 0, awards: 0 };
     for (const ch of S.changes.values()) for (const t of Object.keys(ch)) by[t]++;
-    $("#exportSummary").innerHTML = S.changes.size
-      ? `<span><strong>${fmt(S.changes.size)}</strong> records changed</span><span>${fmt(by.summary)} summaries</span><span>${fmt(by.series)} series</span><span>${fmt(by.awards)} awards</span>`
+    const n = changedIndexes().length;
+    $("#exportSummary").innerHTML = n
+      ? `<span><strong>${fmt(n)}</strong> records changed</span><span>${fmt(by.summary)} summaries</span><span>${fmt(by.series)} series</span><span>${fmt(by.awards)} awards</span><span>${fmt(S.edits.size)} edited by hand</span>`
       : `<span>No approved changes yet. You can still export the whole file below.</span>`;
     renderReviewCounts();
   }
@@ -1207,10 +1279,11 @@ Reply with JSON only and nothing else:
       const i = indexes[n];
       try {
         const ch = withChanges && S.changes.get(i);
-        if (format === "mrc" && !ch && S.src.raw(i)) { parts.push(S.src.raw(i).slice()); continue; }
-        let rec = S.src.get(i);
+        const edited = S.edits.has(i);
+        if (format === "mrc" && !ch && !edited && S.src.raw(i)) { parts.push(S.src.raw(i).slice()); continue; }
+        let rec = baseRecord(i);
         if (ch) {
-          rec = M.cloneRecord(rec);
+          if (!edited) rec = M.cloneRecord(rec);
           for (const note of applyChanges(rec, ch)) problems.push(`Record ${i + 1}: ${note}`);
         }
         if (format === "mrc") { const b = M.buildRecord(rec); folded += b.folded; parts.push(b.bytes); }
@@ -1223,11 +1296,12 @@ Reply with JSON only and nothing else:
   }
 
   const range = (n) => Array.from({ length: n }, (_, i) => i);
+  const changedIndexes = () => [...new Set([...S.changes.keys(), ...S.edits.keys()])].sort((a, b) => a - b);
 
   async function exportRecords(format) {
     if (!S.src) return toast("Load a file first.");
     const scope = $("input[name=expScope]:checked").value;
-    const idx = scope === "changed" ? [...S.changes.keys()].sort((a, b) => a - b) : range(S.src.count);
+    const idx = scope === "changed" ? changedIndexes() : range(S.src.count);
     if (!idx.length) return toast("No approved changes yet. Choose 'The whole file' to export everything.");
     const lg = $("#expLog");
     const { parts, problems } = await writeRecords(idx, format, true, lg);
@@ -1258,7 +1332,7 @@ Reply with JSON only and nothing else:
   async function findExport(kind) {
     const hits = S.findHits;
     if (kind === "view") {
-      S.viewFilter = { label: S.findLabel || "Find results", hits: hits.slice(), pos: 0, titles: {} };
+      S.viewFilter = { label: S.findLabel || "Find results", hits: hits.slice(), pos: 0, titles: {}, selected: new Set(hits) };
       selectTab("records");
       return;
     }
@@ -1310,8 +1384,34 @@ Reply with JSON only and nothing else:
       if (S.viewFilter) S.viewFilter.pos = n; else S.view = n;
       renderViewer();
     });
-    $("#viewFilter").addEventListener("click", (e) => { if (e.target.closest("[data-clear-filter]")) { S.viewFilter = null; renderViewer(); } });
+    $("#viewFilter").addEventListener("click", async (e) => {
+      const f = S.viewFilter;
+      if (e.target.closest("[data-clear-filter]")) { S.viewFilter = null; renderViewer(); return; }
+      if (e.target.closest("[data-sel-all]")) { f.selected = new Set(f.hits); renderFilterBar(); return; }
+      if (e.target.closest("[data-sel-none]")) { f.selected = new Set(); renderFilterBar(); return; }
+      const dl = e.target.closest("[data-sel-dl]");
+      if (dl) {
+        const idx = f.hits.filter((i) => f.selected.has(i));
+        const { parts } = await writeRecords(idx, dl.dataset.selDl, true, null);
+        download(`${baseName()}-selected.${dl.dataset.selDl}`, parts, dl.dataset.selDl === "mrc" ? "application/marc" : "text/plain;charset=utf-8");
+        toast(`Downloaded ${fmt(idx.length)} records.`);
+      }
+    });
     $("#matchList").addEventListener("click", (e) => { const b = e.target.closest("[data-pos]"); if (b) { S.viewFilter.pos = +b.dataset.pos; renderViewer(); } });
+    $("#matchList").addEventListener("change", (e) => {
+      const c = e.target.closest("[data-sel]");
+      if (!c) return;
+      const i = +c.dataset.sel;
+      if (c.checked) S.viewFilter.selected.add(i); else S.viewFilter.selected.delete(i);
+      renderFilterBar();
+    });
+    $("#editBtn").addEventListener("click", startEdit);
+    $("#revertBtn").addEventListener("click", revertEdit);
+    $("#saveEdit").addEventListener("click", saveEdit);
+    $("#cancelEdit").addEventListener("click", cancelEdit);
+    $("#mrkEdit").addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveEdit(); }
+    });
     $("#wrapLines").addEventListener("change", (e) => $("#mrkView").classList.toggle("wrap-lines", e.target.checked));
     $("#dlMrk").addEventListener("click", async () => {
       if (!S.src) return toast("Load a file first.");
@@ -1394,7 +1494,7 @@ Reply with JSON only and nothing else:
     $("#expCsv").addEventListener("click", exportReport);
 
     ["apiKey", "gbKey", "rememberKey"].forEach((id) => $("#" + id).addEventListener("change", saveSettings));
-    window.addEventListener("beforeunload", (e) => { if (S.changes.size && !S.exported) { e.preventDefault(); e.returnValue = ""; } });
+    window.addEventListener("beforeunload", (e) => { if ((S.changes.size || S.edits.size || S.editing) && !S.exported) { e.preventDefault(); e.returnValue = ""; } });
   }
 
   async function openFile(f) {
