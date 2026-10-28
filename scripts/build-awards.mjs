@@ -267,8 +267,8 @@ async function main() {
         for (const x of wp) {
           if (!ids[x.title]) continue;
           const w = ids[x.title].qid;
-          // one row per win: same work within a year is the same win
-          if (!table.some((k) => k.w === w && Math.abs(k.y - x.y) <= 1)) table.push({ w, y: x.y });
+          // one row per win; back-to-back wins (Veep 2015–2017) are separate wins
+          if (!table.some((k) => k.w === w && k.y === x.y)) table.push({ w, y: x.y });
         }
       } catch (e) { console.warn(`  (Wikipedia table not read: ${e.message})`); }
       // The table has consistent ceremony years, so it wins. Wikidata only adds dated wins
