@@ -1,0 +1,11 @@
+# Hand corrections to the award winner data. Re-applied on every build,
+# so a fix made here survives the yearly refresh.
+#
+#   remove | <award title> | <Wikidata QID of the work> | <year, or * for any year>
+#   add    | <award title> | <Wikidata QID of the work> | <year of the ceremony>
+#
+# Award titles are as in data/award-lists.txt. A work's QID is on its Wikidata
+# page (e.g. Titanic is Q44578). Lines starting with # are ignored.
+
+# Wikidata wrongly lists this Indonesian film as a Golden Globe screenplay winner.
+remove | Golden Globe Award for Best Screenplay | Q115190021 | *

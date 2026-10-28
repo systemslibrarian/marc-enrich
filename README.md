@@ -39,6 +39,8 @@ Winner lists are saved in `data/awards.json` so the page never waits on Wikidata
 
 To add a list (BAFTA, Independent Spirit, etc.), add its English Wikipedia article title to `data/award-lists.txt` and run the workflow.
 
+Winners come from each award's Wikipedia winner table (ceremony years), with Wikidata adding dated wins the table lacks; only films and series are kept. To fix a wrong or missing win by hand, add a line to `data/award-corrections.txt` (`remove` or `add`, the award, the work's Wikidata ID, the year). Corrections are re-applied on every build, so they survive the yearly refresh.
+
 ## Award lists included
 
 Academy Award for Best Picture; Academy Award for Best Original Screenplay; Primetime Emmy Awards for Outstanding Comedy Series, Drama Series, and Limited or Anthology Series; Golden Globe Awards for Best Motion Picture – Drama, Musical or Comedy, and Non-English Language; Best Animated Feature Film; Best Screenplay; Best Television Series – Drama and Musical or Comedy; and Best Limited or Anthology Series or Television Film. 586 text defaults to `{award}, {year}`, using the award's current Wikipedia title.

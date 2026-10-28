@@ -173,6 +173,26 @@ const claimYear = (e, p) => {
   return ys.length ? Math.min(...ys) : 0;
 };
 
+const CORRECTIONS = new URL("../data/award-corrections.txt", import.meta.url);
+
+/** Lines: "remove | <award title> | <Wikidata QID> | <year or *>" or "add | <award title> | <QID> | <year>". */
+async function readCorrections() {
+  let text = "";
+  try { text = await readFile(CORRECTIONS, "utf8"); } catch { return []; }
+  const out = [];
+  for (const [n, raw] of text.split(/\r?\n/).entries()) {
+    const line = raw.replace(/#.*$/, "").trim();
+    if (!line) continue;
+    const [op, award, qid, year = "*"] = line.split("|").map((s) => s.trim());
+    if (!/^(add|remove)$/i.test(op) || !award || !/^Q\d+$/.test(qid || "")) {
+      console.warn(`! award-corrections.txt line ${n + 1} not understood: ${raw}`);
+      continue;
+    }
+    out.push({ op: op.toLowerCase(), award, qid, year: /^\d{4}$/.test(year) ? +year : null });
+  }
+  return out;
+}
+
 async function main() {
   const titles = (await readFile(LISTS, "utf8")).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
   let previous = null;
@@ -197,27 +217,35 @@ async function main() {
     };
     if (!r) { console.warn(`! Not found on Wikipedia: ${t}`); keepPrevious("not found on Wikipedia"); continue; }
     try {
-      let list = await winners(r.qid);
-      let fromWiki = [];
+      const list = await winners(r.qid);
+      let table = [];
       try {
         const wp = await wikipediaWinners(r.title);
         const ids = await resolveTitles([...new Set(wp.map((x) => x.title))]);
-        const all = wp.filter((x) => ids[x.title]).map((x) => ({ w: ids[x.title].qid, y: x.y, wp: true }));
-        // a dated table row replaces Wikidata's undated record of the same win
-        list = list.filter((d) => d.y || !all.some((x) => x.w === d.w));
-        const kept = [];
-        for (const x of all) {
-          // skip wins already known (same work, award year within one)
-          if (list.some((d) => d.w === x.w && (!d.y || Math.abs(d.y - x.y) <= 1))) continue;
-          if (kept.some((k) => k.w === x.w && Math.abs(k.y - x.y) <= 1)) continue;
-          kept.push(x);
+        for (const x of wp) {
+          if (!ids[x.title]) continue;
+          const w = ids[x.title].qid;
+          // one row per win: same work within a year is the same win
+          if (!table.some((k) => k.w === w && Math.abs(k.y - x.y) <= 1)) table.push({ w, y: x.y });
         }
-        fromWiki = kept;
       } catch (e) { console.warn(`  (Wikipedia table not read: ${e.message})`); }
-      if (!list.length && !fromWiki.length) throw new Error("no winners returned");
+      // The table has consistent ceremony years, so it wins. Wikidata only adds dated wins
+      // for works the table doesn't list (its dates mix film and ceremony years, and it holds
+      // some undated or mistaken wins).
+      let final, extra = [];
+      if (table.length >= 5) {
+        const inTable = new Set(table.map((x) => x.w));
+        extra = list.filter((d) => d.y && !inTable.has(d.w));
+        final = [...table, ...extra];
+      } else {
+        final = list;
+      }
+      if (!final.length) throw new Error("no winners returned");
       const ai = awards.push({ list: t, title: r.title, qid: r.qid, url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(r.title.replace(/ /g, "_")) }) - 1;
-      for (const x of [...list, ...fromWiki]) rows.push({ a: ai, ...x });
-      console.log(`  ${r.title} (${r.qid}): ${list.length} from Wikidata + ${fromWiki.length} from the Wikipedia table`);
+      for (const x of final) rows.push({ a: ai, ...x });
+      console.log(table.length >= 5
+        ? `  ${r.title} (${r.qid}): ${table.length} from the Wikipedia table + ${extra.length} more from Wikidata`
+        : `  ${r.title} (${r.qid}): ${list.length} from Wikidata (table not usable)`);
     } catch (e) {
       console.warn(`! ${t}: ${e.message}`);
       keepPrevious(e.message);
@@ -225,7 +253,8 @@ async function main() {
     await sleep(1000);
   }
 
-  const workIds = [...new Set(rows.map((x) => x.w))];
+  const corrections = await readCorrections();
+  const workIds = [...new Set([...rows.map((x) => x.w), ...corrections.filter((c) => c.op === "add").map((c) => c.qid)])];
   console.log(`Fetching details for ${workIds.length} works…`);
   const ents = await entities(workIds, "labels|aliases|claims");
   const works = {};
@@ -248,10 +277,28 @@ async function main() {
   const dents = await entities([...directorIds], "labels");
   for (const w of Object.values(works)) w.d = w.d.map((id) => dents[id]?.labels?.en?.value).filter(Boolean);
 
-  // Table rows also bold networks and people; keep only items with a release or run date (films, series).
+  // Keep only films and series: items with a release or run date. Drops people, duos,
+  // and networks that are bolded in the same table rows.
   const dated = (id) => works[id] && (works[id].p || works[id].s);
-  const winnersOut = rows.filter((x) => works[x.w] && (!x.wp || dated(x.w))).map(({ wp, ...x }) => x)
-    .sort((a, b) => a.a - b.a || a.y - b.y || a.w.localeCompare(b.w));
+  let winnersOut = rows.filter((x) => dated(x.w));
+
+  // Hand corrections (data/award-corrections.txt), re-applied on every build.
+  for (const c of corrections) {
+    const ai = awards.findIndex((a) => a.list === c.award || a.title === c.award);
+    if (ai < 0) { problems.push(`correction for unknown award: ${c.award}`); continue; }
+    if (c.op === "remove") {
+      const before = winnersOut.length;
+      winnersOut = winnersOut.filter((x) => !(x.a === ai && x.w === c.qid && (c.year === null || x.y === c.year)));
+      console.log(`  correction: removed ${before - winnersOut.length} row(s) for ${c.qid} from ${c.award}`);
+    } else if (works[c.qid]) {
+      winnersOut = winnersOut.filter((x) => !(x.a === ai && x.w === c.qid && Math.abs(x.y - (c.year || 0)) <= 1));
+      winnersOut.push({ a: ai, w: c.qid, y: c.year || 0 });
+      console.log(`  correction: added ${works[c.qid].l} (${c.year}) to ${c.award}`);
+    } else {
+      problems.push(`correction add: ${c.qid} has no English label on Wikidata`);
+    }
+  }
+  winnersOut.sort((a, b) => a.a - b.a || a.y - b.y || a.w.localeCompare(b.w));
   if (!winnersOut.length) { console.error("No winners at all — not writing awards.json."); process.exit(1); }
   const used = new Set(winnersOut.map((x) => x.w));
   for (const id of Object.keys(works)) if (!used.has(id)) delete works[id];
