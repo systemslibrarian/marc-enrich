@@ -30,6 +30,23 @@
   };
   const tagName = (t) => TAG_NAMES[t] || (/^9/.test(t) ? "Local field" : /^59/.test(t) ? "Local note" : "");
 
+  // Award winner lists. Title = English Wikipedia article (resolved to Wikidata at run time).
+  const AWARD_PRESETS = [
+    "Academy Award for Best Picture",
+    "Academy Award for Best Original Screenplay",
+    "Primetime Emmy Award for Outstanding Comedy Series",
+    "Primetime Emmy Award for Outstanding Drama Series",
+    "Primetime Emmy Award for Outstanding Limited or Anthology Series",
+    "Golden Globe Award for Best Motion Picture – Drama",
+    "Golden Globe Award for Best Motion Picture – Musical or Comedy",
+    "Golden Globe Award for Best Motion Picture – Non-English Language",
+    "Golden Globe Award for Best Animated Feature Film",
+    "Golden Globe Award for Best Screenplay",
+    "Golden Globe Award for Best Television Series – Drama",
+    "Golden Globe Award for Best Television Series – Musical or Comedy",
+    "Golden Globe Award for Best Limited or Anthology Series or Television Film",
+  ];
+
   const S = {
     src: null,
     tagCounts: new Map(),
@@ -126,6 +143,25 @@
 =245  10$aHarry Potter and the sorcerer's stone /$cJ.K. Rowling ; illustrations by Mary GrandPré.
 =264  \1$aNew York :$bArthur A. Levine Books,$c1998.
 =650  \0$aWizards$vFiction.
+
+=LDR  00000ngm\a2200000\i\4500
+=001  sample0006
+=008  ${f008("2012", "cau")}
+=245  00$aTitanic /$cParamount Pictures and Twentieth Century Fox present ; a Lightstorm Entertainment production ; written and directed by James Cameron.
+=264  \1$aHollywood, California :$bParamount Home Entertainment,$c2012.
+=300  \\$a2 videodiscs (194 min.) :$bsound, color ;$c4 3/4 in.
+=500  \\$aOriginally released as a motion picture in 1997.
+=508  \\$aDirector of photography, Russell Carpenter.
+=700  1\$aCameron, James,$d1954-$efilm director,$escreenwriter.
+
+=LDR  00000ngm\a2200000\i\4500
+=001  sample0007
+=008  ${f008("2004", "cau")}
+=245  04$aThe Sopranos.$pThe complete fifth season /$cHBO Original Programming.
+=264  \1$aNew York :$bHBO Video,$c2004.
+=300  \\$a4 videodiscs (approximately 676 min.) :$bsound, color ;$c4 3/4 in.
+=500  \\$aOriginally broadcast on HBO in 2004.
+=700  1\$aChase, David,$d1945-$ecreator.
 `;
 
   // ---------- sources ----------
@@ -221,7 +257,7 @@
     return f && /^\d{4}$/.test(f.data.substr(7, 4)) ? f.data.substr(7, 4) : "";
   }
   const recId = (rec) => plain((M.getFields(rec, "001")[0] || {}).data || "");
-  const typeOk = (ldr, type) => type === "all" || "at".includes(ldr[6]);
+  const typeOk = (ldr, type) => type === "all" || (type === "video" ? ldr[6] === "g" : "at".includes(ldr[6]));
 
   const norm = (s) => plain(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
     .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim().replace(/^(the|a|an) /, "");
@@ -243,6 +279,10 @@
       srcOL: $("#srcOL").checked, srcGB: $("#srcGB").checked, srcTitle: $("#srcTitle").checked, sumNoAI: $("#sumNoAI").checked,
       serMode: $("input[name=serMode]:checked").value, serType: $("#serType").value, serLimit: +$("#serLimit").value || 0,
       serAdd490: $("#serAdd490").checked, serUri: $("#serUri").checked, serAI: $("#serAI").checked,
+      awdType: $("#awdType").value, awdMode: $("#awdMode").value, awdLimit: +$("#awdLimit").value || 0,
+      awdTpl: $("#awdTpl").value.trim() || "{award}, {year}",
+      awdTitles: [...$$("#awdList input:checked").map((x) => x.value),
+        ...$("#awdExtra").value.split(/\n/).map((x) => x.trim()).filter(Boolean)],
       findTags: $("#findTags").value, findCond: $("#findCond").value, findType: $("#findType").value,
       apiKey: $("#apiKey").value.trim(), model: $("#model").value.trim() || "claude-haiku-5-5",
       endpoint: $("#endpoint").value.trim() || "https://api.anthropic.com/v1/messages",
@@ -250,11 +290,12 @@
     };
   }
   const SETTING_IDS = ["sumType", "sumLimit", "sumWords", "sumInd1", "sumC", "sumNote", "srcOL", "srcGB", "srcTitle", "sumNoAI",
-    "serType", "serLimit", "serAdd490", "serUri", "serAI", "findTags", "findCond", "findType", "model", "endpoint", "concurrency", "rememberKey"];
+    "serType", "serLimit", "serAdd490", "serUri", "serAI", "awdType", "awdMode", "awdLimit", "awdTpl", "awdExtra", "findTags", "findCond", "findType", "model", "endpoint", "concurrency", "rememberKey"];
   function saveSettings() {
     const o = {};
     for (const id of SETTING_IDS) { const el = $("#" + id); o[id] = el.type === "checkbox" ? el.checked : el.value; }
     o.serMode = $("input[name=serMode]:checked").value;
+    o.awdOff = $$("#awdList input").filter((x) => !x.checked).map((x) => x.value);
     o.task = S.task;
     store.set("settings", o);
     if ($("#rememberKey").checked) store.set("keys", { apiKey: $("#apiKey").value, gbKey: $("#gbKey").value });
@@ -265,6 +306,7 @@
     if (o) {
       for (const id of SETTING_IDS) { const el = $("#" + id); if (!el || o[id] === undefined) continue; if (el.type === "checkbox") el.checked = !!o[id]; else el.value = o[id]; }
       const r = $(`input[name=serMode][value="${o.serMode}"]`); if (r) r.checked = true;
+      for (const x of $$("#awdList input")) x.checked = !(o.awdOff || []).includes(x.value);
       if (o.task) { const t = $(`input[name=task][value="${o.task}"]`); if (t) { t.checked = true; S.task = o.task; } }
     }
     const k = store.get("keys", null);
@@ -468,6 +510,7 @@ Reply with JSON only and nothing else:
   function selector(o) {
     const SERIES_8XX = ["800", "810", "811", "830"];
     if (o.task === "summary") return { type: o.sumType, test: (tags) => !tags.has("520") };
+    if (o.task === "awards") return { type: o.awdType, test: (tags) => o.awdMode !== "no586" || !tags.has("586") };
     if (o.task === "series") {
       if (o.serMode === "untraced") return { type: o.serType, test: (tags) => tags.has("490") && !SERIES_8XX.some((t) => tags.has(t)) };
       return { type: o.serType, test: (tags) => !tags.has("490") && !tags.has("440") && !SERIES_8XX.some((t) => tags.has(t)) };
@@ -506,16 +549,17 @@ Reply with JSON only and nothing else:
       $("#runBtn").disabled = true;
       return;
     }
-    const limit = o.task === "summary" ? o.sumLimit : o.serLimit;
+    const limit = o.task === "summary" ? o.sumLimit : o.task === "awards" ? o.awdLimit : o.serLimit;
     const take = limit ? hits.slice(0, limit) : hits;
     S.found = take.map((i) => makeCandidate(i, S.src.get(i)));
     S.foundTask = o.task;
     S.filter = "review";
     S.shown = 50;
-    const label = o.task === "summary" ? "with no 520" : o.serMode === "untraced" ? "with a 490 but no series added entry" : "with no series fields";
+    const label = o.task === "summary" ? "records with no 520" : o.task === "awards" ? (o.awdType === "video" ? "video records" : "records") + (o.awdMode === "no586" ? " with no 586" : " to check")
+      : o.serMode === "untraced" ? "records with a 490 but no series added entry" : "records with no series fields";
     const noIsbn = S.found.filter((c) => !c.isbns.length).length;
-    res.innerHTML = `<p><strong>${fmt(hits.length)}</strong> records ${esc(label)}${limit && hits.length > limit ? ` — the first <strong>${fmt(limit)}</strong> will be looked up` : ""}.</p>`
-      + (o.task === "summary" || o.serMode === "none" ? `<p class="muted" style="font-size:.88rem">${fmt(noIsbn)} of these ${noIsbn === 1 ? "has" : "have"} no ISBN${o.task === "summary" && !o.srcTitle ? " and will be skipped" : ""}.</p>` : "")
+    res.innerHTML = `<p><strong>${fmt(hits.length)}</strong> ${esc(label)}${limit && hits.length > limit ? ` — the first <strong>${fmt(limit)}</strong> will be looked up` : ""}.</p>`
+      + (o.task === "summary" || (o.task === "series" && o.serMode === "none") ? `<p class="muted" style="font-size:.88rem">${fmt(noIsbn)} of these ${noIsbn === 1 ? "has" : "have"} no ISBN${o.task === "summary" && !o.srcTitle ? " and will be skipped" : ""}.</p>` : "")
       + `<ul style="margin:8px 0 0;padding-left:20px;font-size:.9rem">${S.found.slice(0, 5).map((c) => `<li>${esc(c.title)}${c.author ? ` <span class="muted">— ${esc(c.author)}</span>` : ""}</li>`).join("")}</ul>`;
     $("#runBtn").disabled = !S.found.length;
     renderReviewCounts();
@@ -558,6 +602,14 @@ Reply with JSON only and nothing else:
       return toast("Add an Anthropic API key, or tick 'Fetch sources only, no AI'.");
     }
     if (S.foundTask === "summary" && !o.srcOL && !o.srcGB && !o.srcTitle) return toast("Choose at least one place to look.");
+    if (S.foundTask === "awards") {
+      if (!o.awdTitles.length) return toast("Choose at least one award list.");
+      log("Loading winner lists from Wikipedia and Wikidata…");
+      try {
+        const { report } = await loadAwardIndex(o);
+        for (const line of report) log(line);
+      } catch (e) { return toast(e.message); }
+    }
     const items = S.found.filter((c) => c.status === "queued" || c.status === "error");
     if (!items.length) return toast("Every record in this set has been looked up. Find records again to start over.");
     S.run = { active: true, paused: false, stop: false };
@@ -571,8 +623,7 @@ Reply with JSON only and nothing else:
     await pool(items, o.concurrency, async (c) => {
       c.opts = o;
       try {
-        if (S.foundTask === "summary") await processSummary(c, o);
-        else await processSeries(c, o);
+        await PROCESS[S.foundTask](c, o);
       } catch (e) {
         c.status = "error";
         c.note = e.message;
@@ -689,6 +740,153 @@ Reply with JSON only and nothing else:
     c.status = "review"; c.note += "Several possible authorities. Choose one or none.";
   }
 
+  // ---------- awards (586) ----------
+  let awardIndex = { key: "", promise: null };
+
+  async function resolveWikiTitles(titles) {
+    const out = {};
+    for (let k = 0; k < titles.length; k += 40) {
+      const batch = titles.slice(k, k + 40);
+      const url = "https://en.wikipedia.org/w/api.php?action=query&prop=pageprops&ppprop=wikibase_item&redirects=1&format=json&origin=*&titles="
+        + encodeURIComponent(batch.join("|"));
+      const j = await getJSON(url);
+      const q = (j && j.query) || {};
+      const hop = (t, list) => { const m = (list || []).find((x) => x.from === t); return m ? m.to : t; };
+      const pages = Object.values(q.pages || {});
+      for (const t of batch) {
+        const final = hop(hop(t, q.normalized), q.redirects);
+        const p = pages.find((x) => x.title === final);
+        if (p && p.pageprops && p.pageprops.wikibase_item) {
+          out[t] = { qid: p.pageprops.wikibase_item, title: p.title, url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(p.title.replace(/ /g, "_")) };
+        }
+      }
+    }
+    return out;
+  }
+
+  function winnersQuery(qid) {
+    return `SELECT ?work ?workLabel ?year (SAMPLE(?pub) AS ?pubYear) (SAMPLE(?st0) AS ?startYear) (SAMPLE(?en0) AS ?endYear)
+  (GROUP_CONCAT(DISTINCT ?alt; separator="|") AS ?alts) (GROUP_CONCAT(DISTINCT ?dirLabel; separator="|") AS ?directors)
+WHERE {
+  { ?work p:P166 ?st . ?st ps:P166 wd:${qid} . FILTER NOT EXISTS { ?work wdt:P31 wd:Q5 } }
+  UNION
+  { ?person p:P166 ?st . ?st ps:P166 wd:${qid} ; pq:P1686 ?work . FILTER NOT EXISTS { ?work wdt:P31 wd:Q5 } }
+  OPTIONAL { ?st pq:P585 ?date . }
+  BIND(YEAR(?date) AS ?year)
+  OPTIONAL { ?work wdt:P577 ?pd . BIND(YEAR(?pd) AS ?pub) }
+  OPTIONAL { ?work wdt:P580 ?sd . BIND(YEAR(?sd) AS ?st0) }
+  OPTIONAL { ?work wdt:P582 ?ed . BIND(YEAR(?ed) AS ?en0) }
+  OPTIONAL { ?work skos:altLabel ?alt . FILTER(LANG(?alt) = "en") }
+  OPTIONAL { ?work wdt:P57 ?dir . ?dir rdfs:label ?dirLabel . FILTER(LANG(?dirLabel) = "en") }
+  ?work rdfs:label ?workLabel . FILTER(LANG(?workLabel) = "en")
+}
+GROUP BY ?work ?workLabel ?year`;
+  }
+
+  function loadAwardIndex(o) {
+    const key = o.awdTitles.join("|");
+    if (awardIndex.promise && awardIndex.key === key) return awardIndex.promise;
+    awardIndex.key = key;
+    awardIndex.promise = (async () => {
+      const resolved = await resolveWikiTitles(o.awdTitles);
+      const index = new Map();
+      const report = [];
+      const addKey = (k, e) => { if (!k) return; const list = index.get(k) || []; if (!list.includes(e)) list.push(e); index.set(k, list); };
+      for (const t of o.awdTitles) {
+        const r = resolved[t];
+        if (!r) { report.push(`Not found on Wikipedia (check the title): ${t}`); continue; }
+        const j = await getJSON("https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(winnersQuery(r.qid)));
+        const rows = (j && j.results && j.results.bindings) || [];
+        const num = (b, f) => (b[f] && /^\d{4}$/.test(b[f].value) ? +b[f].value : 0);
+        for (const b of rows) {
+          const e = {
+            award: r.title, awardUrl: r.url, work: b.workLabel.value, workUrl: b.work.value.replace(/^http:/, "https:"),
+            year: num(b, "year"), pubYear: num(b, "pubYear"), start: num(b, "startYear"), end: num(b, "endYear"),
+            directors: b.directors && b.directors.value ? b.directors.value.split("|") : [],
+          };
+          const names = [e.work, ...(b.alts && b.alts.value ? b.alts.value.split("|") : [])];
+          for (const n of names) { addKey(norm(n), e); if (n.includes(":")) addKey(norm(n.split(":")[0]), e); }
+        }
+        report.push(`${r.title}: ${fmt(rows.length)} winners`);
+      }
+      return { index, report };
+    })();
+    awardIndex.promise.catch(() => { awardIndex.promise = null; });
+    return awardIndex.promise;
+  }
+
+  function recordTitles(rec) {
+    const out = new Set();
+    const add = (s) => { const n = norm(String(s).replace(/&/g, " and ")); if (n) out.add(n); };
+    for (const f of M.getFields(rec, "245")) {
+      const a = M.sub(f, "a")[0] || "";
+      add(a); add([a, M.sub(f, "b")[0] || ""].join(" "));
+      const skip = parseInt(f.ind2, 10); // nonfiling characters
+      if (skip > 0) add(plain(a).slice(skip));
+    }
+    for (const t of ["130", "240", "246", "730"]) for (const f of M.getFields(rec, t)) add(M.sub(f, "a")[0] || "");
+    return [...out];
+  }
+  function recordPeopleText(rec) {
+    const parts = [];
+    for (const f of rec.fields) {
+      if (/^(100|110|245|508|511|700|710)$/.test(f.tag)) for (const [code, v] of f.subfields || []) if (f.tag !== "245" || code === "c") parts.push(v);
+    }
+    return " " + norm(parts.join(" ")) + " ";
+  }
+  function recordYears(rec) {
+    const ys = new Set();
+    const f008 = M.getFields(rec, "008")[0];
+    if (f008) for (const y of [f008.data.substr(7, 4), f008.data.substr(11, 4)]) if (/^(1[89]|20)\d\d$/.test(y)) ys.add(+y);
+    for (const f of rec.fields) {
+      if (!/^(046|245|250|260|264|500|518)$/.test(f.tag)) continue;
+      for (const [, v] of f.subfields || []) for (const m of plain(v).matchAll(/\b(1[89]\d\d|20\d\d)\b/g)) ys.add(+m[1]);
+    }
+    return [...ys];
+  }
+
+  async function processAwards(c, o) {
+    c.status = "working"; c.note = ""; c.sources = []; c.props = { matches: [] };
+    const { index } = await loadAwardIndex(o);
+    const rec = S.src.get(c.i);
+    const found = [];
+    for (const t of recordTitles(rec)) for (const e of index.get(t) || []) if (!found.includes(e)) found.push(e);
+    if (!found.length) { c.status = "nosource"; c.note = "Not a winner in the selected award lists"; return; }
+    const people = recordPeopleText(rec);
+    const years = recordYears(rec);
+    const existing = M.getFields(rec, "586").map((f) => norm(M.sub(f, "a").join(" ")));
+    for (const e of found) {
+      const dir = e.directors.find((d) => { const last = norm(d).split(" ").pop(); return last.length > 2 && people.includes(" " + last + " "); });
+      const isSeries = !!e.start && !e.pubYear;
+      // films: the release year (or award year) must fit; series: only the award's own season year counts
+      const yr = isSeries
+        ? years.find((y) => e.year && Math.abs(y - e.year) <= 1)
+        : years.find((y) => (e.pubYear && Math.abs(y - e.pubYear) <= 1) || (e.year && Math.abs(y - e.year) <= 1));
+      const inRun = isSeries && years.some((y) => y >= e.start - 1 && y <= (e.end || e.start + 30) + 1);
+      const strong = !!(dir || yr);
+      const already = existing.some((x) => x.includes(norm(e.award).replace(/^.*? for /, "")) && (!e.year || x.includes(String(e.year))));
+      c.props.matches.push({
+        ...e, strong, already, checked: strong && !already,
+        why: already ? "already in a 586" : dir ? "director " + dir + " matches" : yr ? "year " + yr + " fits"
+          : inRun ? `the series won this in ${e.year}; tick it if this set includes that season` : "title only — check it's the same work",
+      });
+    }
+    const works = [];
+    for (const m of c.props.matches) if (!works.some((w) => w.workUrl === m.workUrl)) works.push(m);
+    c.sources = works.map((w) => ({
+      name: "Wikidata", url: w.workUrl,
+      title: w.work + (w.pubYear || w.start ? " (" + (w.pubYear || w.start) + (w.end ? "–" + w.end : "") + ")" : ""),
+      text: (w.directors.length ? "Directed by " + w.directors.join(", ") + ". " : "")
+        + "Won: " + c.props.matches.filter((m) => m.workUrl === w.workUrl).map((m) => m.award + (m.year ? " (" + m.year + ")" : "")).join("; "),
+    }));
+    const open = c.props.matches.filter((m) => !m.already);
+    if (!open.length) { c.status = "skipped"; c.note = "Every matching award is already in a 586"; return; }
+    c.status = open.some((m) => m.strong) ? "ready" : "review";
+    c.note = c.status === "ready" ? `${open.filter((m) => m.checked).length} award(s) confirmed` : "Title matches only. Tick the awards that belong to this work.";
+  }
+
+  const PROCESS = { summary: processSummary, series: processSeries, awards: processAwards };
+
   // ---------- building new fields ----------
   function endPeriod(s) { s = s.trim(); return /[.!?]["')\]]?$/.test(s) ? s : s + "."; }
 
@@ -702,6 +900,13 @@ Reply with JSON only and nothing else:
   function buildFields(c, task) {
     const o = c.opts || opts();
     const p = c.props || {};
+    if (task === "awards") {
+      return (p.matches || []).filter((m) => m.checked && !m.already).map((m) => ({
+        tag: "586", ind1: " ", ind2: " ",
+        subfields: [["a", (o.awdTpl || "{award}, {year}").replace(/\{award\}/g, m.award)
+          .replace(m.year ? /\{year\}/g : /[\s,;:–-]*\{year\}/g, m.year ? String(m.year) : "").trim()]],
+      }));
+    }
     if (task === "summary") {
       const text = (p.summary || "").trim();
       if (!text) return [];
@@ -731,7 +936,7 @@ Reply with JSON only and nothing else:
   /** Apply approved changes to a cloned record. Returns notes about edits made. */
   function applyChanges(rec, ch) {
     const notes = [];
-    for (const task of ["summary", "series"]) {
+    for (const task of ["summary", "series", "awards"]) {
       const c = ch[task];
       if (!c) continue;
       const fields = buildFields(c, task);
@@ -815,6 +1020,12 @@ Reply with JSON only and nothing else:
         prop = `<label class="fld"><span>520 $a summary</span><textarea data-k="${k}" data-edit="summary" rows="4">${esc(p.summary || "")}</textarea>
           <small class="muted" data-wc="${k}">${wordCount(p.summary)} words</small></label>`;
       }
+    } else if (task === "awards") {
+      if ((p.matches || []).length) {
+        prop = `<div class="cands">${p.matches.map((m, ix) => `<label class="cand"><input type="checkbox" data-k="${k}" data-award="${ix}" ${m.checked ? "checked" : ""} ${m.already ? "disabled" : ""}>
+          <span>${esc(m.award)}${m.year ? ", " + m.year : ""} <span class="muted">— ${esc(m.work)}</span></span>
+          <small class="muted">${m.strong ? "Confirmed: " : ""}${esc(m.why)} · <a href="${esc(m.awardUrl)}" target="_blank" rel="noopener">winner list</a></small></label>`).join("")}</div>`;
+      }
     } else if (p.statement !== undefined) {
       const cands = (p.candidates || []).map((x, ix) => `<label class="cand"><input type="radio" name="pick-${k}" data-k="${k}" data-pick="${ix}" ${p.pick === ix ? "checked" : ""}>
           <span class="mono">${esc(x.marcKey || x.label)}</span><small class="muted">${esc(x.note)}${x.uri ? ` · <a href="${esc(x.uri.replace(/^http:/, "https:"))}" target="_blank" rel="noopener">id.loc.gov</a>` : ""}</small></label>`).join("");
@@ -823,7 +1034,7 @@ Reply with JSON only and nothing else:
           <label class="fld"><span>Volume</span><input type="text" data-k="${k}" data-edit="volume" value="${esc(p.volume)}"></label></div>
         <div class="cands">${cands}<label class="cand"><input type="radio" name="pick-${k}" data-k="${k}" data-pick="-1" ${p.pick === null ? "checked" : ""}><span>None of these${p.add490 ? " — add the 490 only (untraced)" : ""}</span></label></div>`;
     }
-    const fields = c.sources.length || p.statement ? buildFields(c, task) : [];
+    const fields = c.sources.length || p.statement || (p.matches && p.matches.length) ? buildFields(c, task) : [];
     const preview = fields.length ? `<pre class="mrk wrap-lines" data-prev="${k}">${hiFields(fields)}</pre>` : `<pre class="mrk wrap-lines" data-prev="${k}"><span class="muted">Nothing to add.</span></pre>`;
     const canApprove = fields.length > 0;
     const foot = `<div class="card-foot"><span class="why">${esc(c.note)}</span><div class="btnrow">
@@ -882,7 +1093,7 @@ Reply with JSON only and nothing else:
     if (S.run.active) return toast("Wait for the current run to finish.");
     const o = opts();
     c.opts = o; c.status = "working"; renderReview();
-    try { if (S.foundTask === "summary") await processSummary(c, o); else await processSeries(c, o); }
+    try { await PROCESS[S.foundTask](c, o); }
     catch (e) { c.status = "error"; c.note = e.message; }
     renderReview();
   }
@@ -902,7 +1113,7 @@ Reply with JSON only and nothing else:
       let html = M.toMnemonic(rec).split("\n").map((l) => hiLine(l, false)).join("\n");
       if (ch) {
         const extra = [];
-        for (const t of ["summary", "series"]) if (ch[t]) extra.push(...buildFields(ch[t], t));
+        for (const t of ["summary", "series", "awards"]) if (ch[t]) extra.push(...buildFields(ch[t], t));
         if (extra.length) html += "\n" + hiFields(extra);
       }
       pre.innerHTML = html;
@@ -925,7 +1136,7 @@ Reply with JSON only and nothing else:
     const src = S.src;
     if (!src) return;
     $("#fileName").textContent = src.sample ? "Sample records" : src.name;
-    $("#fileHint").textContent = src.sample ? "Five example records, not your data. Choose a file to work on your own records." : `${(src.size / 1048576).toFixed(src.size < 1048576 ? 2 : 1)} MB · ${src.kind === "mrc" ? "binary MARC" : "MarcEdit mnemonic text"}`;
+    $("#fileHint").textContent = src.sample ? "Example books and DVDs, not your data. Choose a file to work on your own records." : `${(src.size / 1048576).toFixed(src.size < 1048576 ? 2 : 1)} MB · ${src.kind === "mrc" ? "binary MARC" : "MarcEdit mnemonic text"}`;
     const missing520 = src.count - (S.tagCounts.get("520") || 0);
     const chips = [
       src.sample ? `<span class="chip sample">Sample</span>` : "",
@@ -946,10 +1157,10 @@ Reply with JSON only and nothing else:
 
   // ---------- export ----------
   function renderExport() {
-    const by = { summary: 0, series: 0 };
+    const by = { summary: 0, series: 0, awards: 0 };
     for (const ch of S.changes.values()) for (const t of Object.keys(ch)) by[t]++;
     $("#exportSummary").innerHTML = S.changes.size
-      ? `<span><strong>${fmt(S.changes.size)}</strong> records changed</span><span>${fmt(by.summary)} summaries</span><span>${fmt(by.series)} series</span>`
+      ? `<span><strong>${fmt(S.changes.size)}</strong> records changed</span><span>${fmt(by.summary)} summaries</span><span>${fmt(by.series)} series</span><span>${fmt(by.awards)} awards</span>`
       : `<span>No approved changes yet. You can still export the whole file below.</span>`;
     renderReviewCounts();
   }
@@ -1051,7 +1262,7 @@ Reply with JSON only and nothing else:
 
   function showTaskOpts() {
     for (const b of $$("[data-opts]")) b.hidden = b.dataset.opts !== S.task;
-    $("#aiBox").hidden = S.task === "find";
+    $("#aiBox").hidden = S.task === "find" || S.task === "awards";
     $("#runBtn").hidden = S.task === "find";
     $("#runBtn").disabled = !(S.foundTask === S.task && S.found.some((c) => c.status === "queued" || c.status === "error"));
   }
@@ -1130,6 +1341,14 @@ Reply with JSON only and nothing else:
     });
     cards.addEventListener("change", (e) => {
       const t = e.target;
+      if (t.dataset.award !== undefined) {
+        const c = S.found[+t.dataset.k];
+        c.props.matches[+t.dataset.award].checked = t.checked;
+        if (c.status === "review" && buildFields(c, "awards").length) c.status = "ready";
+        if (c.status === "approved") S.exported = false;
+        refreshCard(+t.dataset.k);
+        return;
+      }
       if (t.dataset.pick === undefined) return;
       const c = S.found[+t.dataset.k];
       const v = +t.dataset.pick;
@@ -1166,11 +1385,12 @@ Reply with JSON only and nothing else:
   }
 
   // ---------- start ----------
+  $("#awdList").innerHTML = AWARD_PRESETS.map((t, ix) => `<label class="check"><input type="checkbox" id="awd${ix}" value="${esc(t)}" checked> ${esc(t)}</label>`).join("");
   loadSettings();
   wire();
   showTaskOpts();
   loadSample().then(() => selectTab("records"));
 
   // exposed for tests
-  window.MarcEnrichTest = { splitSeries, fieldFromMarcKey, buildFields, norm, cleanDesc, applyChanges, S };
+  window.MarcEnrichTest = { splitSeries, fieldFromMarcKey, buildFields, norm, cleanDesc, applyChanges, recordTitles, recordYears, S };
 })();

@@ -280,6 +280,8 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
         <p>Find records with no 520, pull descriptions from Open Library and Google Books, and have AI condense them into a neutral summary note.</p></label>
       <label class="task"><input type="radio" name="task" value="series"><strong>Add series <span class="mono">490 / 830</span></strong>
         <p>Trace untraced 490s, or find series for records with none, and match each to a Library of Congress series authority.</p></label>
+      <label class="task"><input type="radio" name="task" value="awards"><strong>Add awards <span class="mono">586</span></strong>
+        <p>Match films and TV series on DVD and Blu-ray against Oscar, Emmy and Golden Globe winner lists from Wikipedia and Wikidata.</p></label>
       <label class="task"><input type="radio" name="task" value="find"><strong>Find records by field</strong>
         <p>List records that are missing (or have) any tags you name. Export the list or just those records. No lookups.</p></label>
     </div>
@@ -332,6 +334,26 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
       <label class="check"><input type="checkbox" id="serAI" checked> Use AI to choose when several authorities are close <small>(exact matches never need it)</small></label>
     </div>
     <p class="note" style="margin-top:14px">830 headings come only from the Library of Congress Name Authority File (id.loc.gov). The AI may pick among real authorities or decline; it never writes a heading itself.</p>
+  </div>
+
+  <!-- awards options -->
+  <div class="box" data-opts="awards" hidden>
+    <h3>Award options</h3>
+    <div class="form">
+      <label class="fld"><span>Record types</span>
+        <select id="awdType"><option value="video">Video — DVD, Blu-ray (Leader/06 g)</option><option value="all">All record types</option></select></label>
+      <label class="fld"><span>Which records</span>
+        <select id="awdMode"><option value="all">All of them (awards already in a 586 are skipped)</option><option value="no586">Only records with no 586</option></select></label>
+      <label class="fld"><span>How many records this run</span><input type="number" id="awdLimit" min="0" value="0"><small>0 = all. Matching is local, so whole files are fine.</small></label>
+      <label class="fld"><span>586 text</span><input type="text" id="awdTpl" value="{award}, {year}"><small>{award} is the award's Wikipedia title; {year} the year of the award.</small></label>
+    </div>
+    <fieldset style="margin-top:14px"><legend>Winner lists to check</legend>
+      <div class="radios" id="awdList"></div>
+    </fieldset>
+    <label class="fld" style="margin-top:14px"><span>More awards (optional)</span>
+      <textarea id="awdExtra" rows="3" placeholder="One Wikipedia article title per line, e.g. BAFTA Award for Best Film"></textarea>
+      <small>Any award whose winners are recorded on Wikidata works.</small></label>
+    <p class="note" style="margin-top:14px">A title match alone is not enough: a match is marked confirmed only when the director's name or the release years in your record agree with Wikidata. Title-only matches wait for your review.</p>
   </div>
 
   <!-- find options -->
@@ -420,7 +442,7 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
 </section>
 
 <footer>
-  <p>Sources: Open Library, Google Books, Library of Congress id.loc.gov. AI by the Anthropic API with your own key.</p>
+  <p>Sources: Open Library, Google Books, Library of Congress id.loc.gov, Wikipedia and Wikidata. AI by the Anthropic API with your own key.</p>
   <p>Mnemonic format follows MarcEdit's MarcBreaker conventions: blanks as <span class="mono">\</span>, <span class="mono">{dollar}</span> for $, and MARC-8 bytes as <span class="mono">{0xHH}</span>.</p>
 </footer>
 </div>
