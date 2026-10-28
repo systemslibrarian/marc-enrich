@@ -1,0 +1,32 @@
+# Temporary: save raw wikitext of award articles to the debug-wikitext branch for parser development.
+name: Debug wikitext snapshot
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch wikitext
+        run: |
+          mkdir -p snap
+          while IFS= read -r t; do
+            case "$t" in ''|\#*) continue;; esac
+            f="snap/$(echo "$t" | tr ' /–' '__-').wikitext"
+            curl -sfG -A "MARC-Enrich debug (github.com/systemslibrarian/marc-enrich)" \
+              --data-urlencode "title=$t" --data-urlencode "action=raw" \
+              "https://en.wikipedia.org/w/index.php" -o "$f" || echo "failed: $t"
+            sleep 1
+          done < data/award-lists.txt
+          ls -la snap
+      - name: Push snapshot branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan debug-wikitext
+          git rm -rfq --cached .
+          git add snap
+          git commit -qm "Wikitext snapshot $(date -u +%F)"
+          git push -f origin debug-wikitext
