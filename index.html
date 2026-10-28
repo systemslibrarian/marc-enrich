@@ -306,10 +306,10 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
     <div class="tasks" role="radiogroup" aria-label="Task">
       <label class="task"><input type="radio" name="task" value="summary" checked><strong>Add summaries <span class="mono">520</span></strong>
         <p>Find records with no 520, pull descriptions from Open Library and Google Books, and have AI condense them into a neutral summary note.</p>
-        <span class="cap">In batches — 200 per run by default (web lookups and AI)</span></label>
+        <span class="cap">In batches — up to 2,000 per run (web lookups and AI)</span></label>
       <label class="task"><input type="radio" name="task" value="series"><strong>Add series <span class="mono">490 / 830</span></strong>
         <p>Trace untraced 490s, or find series for records with none, and match each to a Library of Congress series authority.</p>
-        <span class="cap">In batches — 200 per run by default (web lookups)</span></label>
+        <span class="cap">In batches — up to 2,000 per run (web lookups)</span></label>
       <label class="task"><input type="radio" name="task" value="awards"><strong>Add awards <span class="mono">586</span></strong>
         <p>Match films and TV series on DVD and Blu-ray against saved Oscar, Emmy and Golden Globe winner lists.</p>
         <span class="cap whole">Whole file at once — no lookups, takes seconds</span></label>
@@ -326,7 +326,7 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
       <label class="fld"><span>Record types</span>
         <select id="sumType"><option value="text" selected>Books and text (Leader/06 a, t)</option><option value="audio">Audiobooks (Leader/06 i)</option><option value="video">Video — DVD, Blu-ray (Leader/06 g)</option><option value="media">Books, audiobooks and video</option><option value="all">All record types</option></select></label>
       <label class="fld"><span>How many records this run</span>
-        <input type="number" id="sumLimit" min="0" value="200"><small>Start with a sample you can check by hand. 0 = all.</small></label>
+        <input type="number" id="sumLimit" min="1" max="2000" value="200"><small>Up to 2,000 per run (about 30–40 minutes). Start with a sample you can check by hand.</small></label>
       <label class="fld"><span>Maximum words</span><input type="number" id="sumWords" min="15" max="200" value="60"></label>
       <label class="fld"><span>520 first indicator</span>
         <select id="sumInd1"><option value=" ">blank — Summary</option><option value="0">0 — Subject</option><option value="2">2 — Scope and content</option><option value="3">3 — Abstract</option><option value="8">8 — No display constant</option></select></label>
@@ -358,7 +358,7 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
     <div class="form" style="margin-top:14px">
       <label class="fld"><span>Record types</span>
         <select id="serType"><option value="text" selected>Books and text (Leader/06 a, t)</option><option value="audio">Audiobooks (Leader/06 i)</option><option value="video">Video — DVD, Blu-ray (Leader/06 g)</option><option value="media">Books, audiobooks and video</option><option value="all">All record types</option></select></label>
-      <label class="fld"><span>How many records this run</span><input type="number" id="serLimit" min="0" value="200"><small>0 = all.</small></label>
+      <label class="fld"><span>How many records this run</span><input type="number" id="serLimit" min="1" max="2000" value="200"><small>Up to 2,000 per run (about 30 minutes).</small></label>
     </div>
     <div class="radios" style="margin-top:14px">
       <label class="check"><input type="checkbox" id="serAdd490" checked> Add a 490 1\ when the record has none</label>

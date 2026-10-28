@@ -36,7 +36,8 @@
     encCounts: { utf8: 0, marc8: 0 },
     bad: [],
     view: 0,
-    viewFilter: null,   // { label, hits: [record indexes], pos, titles: {} } while browsing Find results
+    viewFilter: null,
+    processed: { summary: new Set(), series: new Set() }, // records already looked up this session   // { label, hits: [record indexes], pos, titles: {} } while browsing Find results
     task: "summary",
     found: [],          // candidates from the latest lookup task
     foundTask: null,
@@ -185,6 +186,7 @@
     src.sample = isSample;
     S.src = src;
     S.found = []; S.foundTask = null; S.findHits = []; S.changes.clear(); S.exported = true; S.view = 0; S.viewFilter = null;
+    S.processed = { summary: new Set(), series: new Set() };
     $("#findResult").hidden = true; $("#runBox").hidden = true; $("#runBtn").disabled = true;
     await computeStats(warnings);
     renderAll();
@@ -257,13 +259,22 @@
   }
 
   // ---------- options ----------
+  // Lookup tasks call web services for every record (~60 records/min), so runs are capped.
+  const MAX_LOOKUP = 2000;
+  function batchLimit(sel) {
+    const el = $(sel);
+    const n = Math.round(+el.value) || MAX_LOOKUP;
+    const v = Math.min(MAX_LOOKUP, Math.max(1, n));
+    if (String(v) !== el.value) el.value = v;
+    return v;
+  }
   function opts() {
     return {
       task: S.task,
-      sumType: $("#sumType").value, sumLimit: +$("#sumLimit").value || 0, sumWords: Math.max(15, +$("#sumWords").value || 60),
+      sumType: $("#sumType").value, sumLimit: batchLimit("#sumLimit"), sumWords: Math.max(15, +$("#sumWords").value || 60),
       sumInd1: $("#sumInd1").value, sumC: $("#sumC").value.trim(), sumNote: $("#sumNote").value.trim(),
       srcOL: $("#srcOL").checked, srcGB: $("#srcGB").checked, srcTitle: $("#srcTitle").checked, sumNoAI: $("#sumNoAI").checked,
-      serMode: $("input[name=serMode]:checked").value, serType: $("#serType").value, serLimit: +$("#serLimit").value || 0,
+      serMode: $("input[name=serMode]:checked").value, serType: $("#serType").value, serLimit: batchLimit("#serLimit"),
       serAdd490: $("#serAdd490").checked, serUri: $("#serUri").checked, serAI: $("#serAI").checked,
       awdType: $("#awdType").value, awdMode: $("#awdMode").value, awdLimit: +$("#awdLimit").value || 0,
       awdTpl: $("#awdTpl").value.trim() || "{award}, {year}",
@@ -537,7 +548,10 @@ Reply with JSON only and nothing else:
       return;
     }
     const limit = o.task === "summary" ? o.sumLimit : o.task === "awards" ? o.awdLimit : o.serLimit;
-    const take = limit ? hits.slice(0, limit) : hits;
+    const doneSet = S.processed[o.task];
+    const fresh = doneSet ? hits.filter((i) => !doneSet.has(i)) : hits;
+    const skippedDone = hits.length - fresh.length;
+    const take = limit ? fresh.slice(0, limit) : fresh;
     S.found = take.map((i) => makeCandidate(i, S.src.get(i)));
     S.foundTask = o.task;
     S.filter = "review";
@@ -545,7 +559,7 @@ Reply with JSON only and nothing else:
     const label = o.task === "summary" ? "records with no 520" : o.task === "awards" ? (({ video: "video records", audio: "audiobook records", text: "book records", media: "book, audiobook and video records" }[o.awdType] || "records")) + (o.awdMode === "no586" ? " with no 586" : " to check")
       : o.serMode === "untraced" ? "records with a 490 but no series added entry" : "records with no series fields";
     const noIsbn = S.found.filter((c) => !c.isbns.length).length;
-    res.innerHTML = `<p><strong>${fmt(hits.length)}</strong> ${esc(label)}${limit && hits.length > limit ? ` — the first <strong>${fmt(limit)}</strong> will be looked up` : ""}.</p>`
+    res.innerHTML = `<p><strong>${fmt(hits.length)}</strong> ${esc(label)}${skippedDone ? ` (${fmt(skippedDone)} already looked up this session are skipped)` : ""}${limit && fresh.length > limit ? ` — this run looks up the next <strong>${fmt(limit)}</strong>; Find records again afterward for the following batch` : ""}.</p>`
       + (o.task === "summary" || (o.task === "series" && o.serMode === "none") ? `<p class="muted" style="font-size:.88rem">${fmt(noIsbn)} of these ${noIsbn === 1 ? "has" : "have"} no ISBN${o.task === "summary" && !o.srcTitle ? " and will be skipped" : ""}.</p>` : "")
       + `<ul style="margin:8px 0 0;padding-left:20px;font-size:.9rem">${S.found.slice(0, 5).map((c) => `<li>${esc(c.title)}${c.author ? ` <span class="muted">— ${esc(c.author)}</span>` : ""}</li>`).join("")}</ul>`;
     $("#runBtn").disabled = !S.found.length;
@@ -617,6 +631,7 @@ Reply with JSON only and nothing else:
         if (e.fatal) { S.run.stop = true; toast(e.message); }
       }
       done++;
+      if (S.processed[S.foundTask] && c.status !== "error") S.processed[S.foundTask].add(c.i);
       log(`#${c.i + 1} ${c.title.slice(0, 60)} — ${statusLabel(c.status)}${c.note ? ": " + c.note : ""}`);
       updateRunStats(done, items.length, t0);
       scheduleReviewRender();
@@ -1140,7 +1155,7 @@ Reply with JSON only and nothing else:
     const src = S.src;
     if (!src) return;
     $("#fileName").textContent = src.sample ? "Sample records" : src.name;
-    $("#fileHint").textContent = src.sample ? "Example books and DVDs, not your data. Choose your own file — whole ILS exports are fine (tested with 300,000 records)." : `${(src.size / 1048576).toFixed(src.size < 1048576 ? 2 : 1)} MB · ${src.kind === "mrc" ? "binary MARC" : "MarcEdit mnemonic text"}`;
+    $("#fileHint").textContent = src.sample ? "Example books and DVDs, not your data. Choose your own file — whole ILS exports are fine (tested with 600,000 records)." : `${(src.size / 1048576).toFixed(src.size < 1048576 ? 2 : 1)} MB · ${src.kind === "mrc" ? "binary MARC" : "MarcEdit mnemonic text"}`;
     const missing520 = src.count - (S.tagCounts.get("520") || 0);
     const chips = [
       src.sample ? `<span class="chip sample">Sample</span>` : "",
@@ -1149,6 +1164,7 @@ Reply with JSON only and nothing else:
       S.encCounts.marc8 ? `<span class="chip">${fmt(S.encCounts.marc8)} MARC-8</span>` : "",
       `<span class="chip">${fmt(missing520)} without 520</span>`,
       S.bad.length ? `<span class="chip" style="color:var(--bad)">${fmt(S.bad.length)} unreadable</span>` : "",
+      src.count > 500000 || src.size > 400 * 1048576 ? `<span class="chip" style="color:var(--warn)">Very large file — splitting it will keep the browser responsive</span>` : "",
     ];
     $("#fileChips").innerHTML = chips.join("");
     const keyRec = (() => { try { return recId(src.get(0)); } catch { return ""; } })();
