@@ -119,13 +119,19 @@ function cellContent(cell) {
   return cell;
 }
 const plainCell = (c) => cellContent(c)
+  // keep the text of display-wrapper templates ({{nowrap|2024}}, {{sort|key|2024}}); drop the rest
+  .replace(/\{\{\s*(?:nowrap|nobr|center|small|big|sort|nts|anchor)\s*\|([^{}]*)\}\}/gi, (_, args) => args.split("|").pop())
   .replace(/\{\{[^{}]*\}\}/g, " ")
   .replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1")
   .replace(/<[^>]+>/g, " ").replace(/'{2,}/g, "").trim();
-const BOLD_LINK = /'{3,}\s*\[\[([^\]|#]+)/g;
+const BOLD_LINK = /'{3,}\s*(?:\{\{[^{}|]*\|(?:[^{}|]*\|)*)?\[\[([^\]|#]+)/g;
+
+// Year of the Nth ceremony, so table years (often the film year) match Wikidata's award dates.
+const CEREMONY_BASE = [[/Golden Globe/, 1943], [/Academy Award/, 1928], [/Emmy/, 1948]];
 
 /** Winners from the award article's tables: bolded links in each year's group of rows. */
 async function wikipediaWinners(title) {
+  const base = (CEREMONY_BASE.find(([re]) => re.test(title)) || [])[1] || 0;
   const params = new URLSearchParams({ action: "parse", page: title, prop: "wikitext", format: "json", formatversion: "2", redirects: "1" });
   const j = await request(`${WIKI_API}?${params}`);
   const text = j.parse?.wikitext || "";
@@ -136,7 +142,10 @@ async function wikipediaWinners(title) {
       for (const cell of row.split(/\n[|!]|\|\||!!/)) {
         const t = plainCell(cell);
         const m = t.match(/^((?:19[2-9]|20[0-4])\d)\b/);
-        if (m && t.length < 40) year = +m[1];
+        if (m && t.length < 40) {
+          const ord = base && t.match(/\((\d{1,3})(?:st|nd|rd|th)\)/);
+          year = ord ? base + +ord[1] : +m[1];
+        }
       }
       if (!year) continue;
       for (const m of row.matchAll(BOLD_LINK)) out.push({ title: m[1].trim(), y: year });
@@ -188,14 +197,22 @@ async function main() {
     };
     if (!r) { console.warn(`! Not found on Wikipedia: ${t}`); keepPrevious("not found on Wikipedia"); continue; }
     try {
-      const list = await winners(r.qid);
+      let list = await winners(r.qid);
       let fromWiki = [];
       try {
         const wp = await wikipediaWinners(r.title);
         const ids = await resolveTitles([...new Set(wp.map((x) => x.title))]);
-        fromWiki = wp.filter((x) => ids[x.title]).map((x) => ({ w: ids[x.title].qid, y: x.y, wp: true }))
-          // skip wins Wikidata already has (same work, award year within one)
-          .filter((x) => !list.some((d) => d.w === x.w && (!d.y || Math.abs(d.y - x.y) <= 1)));
+        const all = wp.filter((x) => ids[x.title]).map((x) => ({ w: ids[x.title].qid, y: x.y, wp: true }));
+        // a dated table row replaces Wikidata's undated record of the same win
+        list = list.filter((d) => d.y || !all.some((x) => x.w === d.w));
+        const kept = [];
+        for (const x of all) {
+          // skip wins already known (same work, award year within one)
+          if (list.some((d) => d.w === x.w && (!d.y || Math.abs(d.y - x.y) <= 1))) continue;
+          if (kept.some((k) => k.w === x.w && Math.abs(k.y - x.y) <= 1)) continue;
+          kept.push(x);
+        }
+        fromWiki = kept;
       } catch (e) { console.warn(`  (Wikipedia table not read: ${e.message})`); }
       if (!list.length && !fromWiki.length) throw new Error("no winners returned");
       const ai = awards.push({ list: t, title: r.title, qid: r.qid, url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(r.title.replace(/ /g, "_")) }) - 1;
