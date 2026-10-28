@@ -30,12 +30,12 @@ jobs:
         run: node scripts/build-awards.mjs
       - name: Commit if changed
         run: |
-          if [ -z "$(git status --porcelain -- data/awards.json)" ]; then
+          if [ -z "$(git status --porcelain -- data/awards.json data/awards.csv)" ]; then
             echo "Award data unchanged."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
-          git add data/awards.json
+          git add data/awards.json data/awards.csv
           git commit -m "Update award winner data ($(date -u +%Y-%m-%d))"
           git push

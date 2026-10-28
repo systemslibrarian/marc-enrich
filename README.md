@@ -41,6 +41,16 @@ To add a list (BAFTA, Independent Spirit, etc.), add its English Wikipedia artic
 
 Winners come from each award's Wikipedia winner table (ceremony years), with Wikidata adding dated wins the table lacks; only films and series are kept. To fix a wrong or missing win by hand, add a line to `data/award-corrections.txt` (`remove` or `add`, the award, the work's Wikidata ID, the year). Corrections are re-applied on every build, so they survive the yearly refresh.
 
+## Checking the award data
+
+Every win the awards task uses is public, with its source:
+
+- **[Award data page](https://systemslibrarian.github.io/marc-enrich/awards.html)**: browse by award, search titles or directors, filter by source, and open each win's Wikipedia winner list and Wikidata record.
+- **[`data/awards.csv`](data/awards.csv)**: the same list as a spreadsheet, one row per win (GitHub shows it as a searchable table).
+- **[`data/award-corrections.txt`](data/award-corrections.txt)**: hand fixes applied on top of the sources.
+
+Each row is marked with its source: *Wikipedia winner table* (most wins), *Wikidata* (dated wins the table lacked), or *Manual correction*.
+
 ## Award lists included
 
 Academy Award for Best Picture; Academy Award for Best Original Screenplay; Primetime Emmy Awards for Outstanding Comedy Series, Drama Series, and Limited or Anthology Series; Golden Globe Awards for Best Motion Picture – Drama, Musical or Comedy, and Non-English Language; Best Animated Feature Film; Best Screenplay; Best Television Series – Drama and Musical or Comedy; and Best Limited or Anthology Series or Television Film. 586 text defaults to `{award}, {year}`, using the award's current Wikipedia title.

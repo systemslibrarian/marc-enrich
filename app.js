@@ -773,7 +773,7 @@ Reply with JSON only and nothing else:
       const counts = d.awards.map((_, ai) => d.winners.filter((w) => w.a === ai).length);
       box.innerHTML = d.awards.map((aw, ai) => `<label class="check"><input type="checkbox" id="awd${ai}" value="${esc(aw.list)}" ${off.includes(aw.list) ? "" : "checked"}>
         <span>${esc(aw.title)} <small class="muted">· ${fmt(counts[ai])} winners · <a href="${esc(aw.url)}" target="_blank" rel="noopener">list</a></small></span></label>`).join("");
-      info.textContent = `Winner lists saved ${d.generated} from Wikipedia and Wikidata. They refresh once a year; run the "Update award data" workflow to refresh sooner or after adding a list to data/award-lists.txt.`;
+      info.innerHTML = `Winner lists saved ${esc(d.generated)} from Wikipedia and Wikidata, refreshed once a year. <a href="awards.html" target="_blank" rel="noopener">See every winner and its source</a> to check the data.`;
     } catch (e) {
       box.innerHTML = "";
       info.textContent = e.message;

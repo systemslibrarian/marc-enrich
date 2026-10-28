@@ -216,6 +216,21 @@ const claimYear = (e, p) => {
 };
 
 const CORRECTIONS = new URL("../data/award-corrections.txt", import.meta.url);
+const CSV = new URL("../data/awards.csv", import.meta.url);
+
+const SOURCE_NAMES = { wp: "Wikipedia winner table", wd: "Wikidata", fix: "Manual correction" };
+
+/** One row per win, for people to check the data (GitHub shows CSV files as a searchable table). */
+function toCsv(data) {
+  const cell = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const lines = [["award", "year", "title", "directors", "release_or_start_year", "source", "wikidata_id", "wikidata_url", "winner_list_url"].join(",")];
+  for (const x of data.winners) {
+    const aw = data.awards[x.a], w = data.works[x.w];
+    lines.push([aw.title, x.y || "", w.l, (w.d || []).join("; "), w.p || w.s || "", SOURCE_NAMES[x.s] || "Wikidata",
+      x.w, "https://www.wikidata.org/wiki/" + x.w, aw.url].map(cell).join(","));
+  }
+  return lines.join("\n") + "\n";
+}
 
 /** Lines: "remove | <award title> | <Wikidata QID> | <year or *>" or "add | <award title> | <QID> | <year>". */
 async function readCorrections() {
@@ -254,7 +269,7 @@ async function main() {
       if (!prevAward) return;
       const ai = awards.push({ ...prevAward }) - 1;
       const oldIndex = previous.awards.indexOf(prevAward);
-      for (const w of previous.winners.filter((x) => x.a === oldIndex)) rows.push({ a: ai, w: w.w, y: w.y });
+      for (const w of previous.winners.filter((x) => x.a === oldIndex)) rows.push({ a: ai, w: w.w, y: w.y, s: w.s || "wd" });
       console.warn(`  kept ${previous.winners.filter((x) => x.a === oldIndex).length} winners from the previous build`);
     };
     if (!r) { console.warn(`! Not found on Wikipedia: ${t}`); keepPrevious("not found on Wikipedia"); continue; }
@@ -268,7 +283,7 @@ async function main() {
           if (!ids[x.title]) continue;
           const w = ids[x.title].qid;
           // one row per win; back-to-back wins (Veep 2015–2017) are separate wins
-          if (!table.some((k) => k.w === w && k.y === x.y)) table.push({ w, y: x.y });
+          if (!table.some((k) => k.w === w && k.y === x.y)) table.push({ w, y: x.y, s: "wp" });
         }
       } catch (e) { console.warn(`  (Wikipedia table not read: ${e.message})`); }
       // The table has consistent ceremony years, so it wins. Wikidata only adds dated wins
@@ -277,10 +292,10 @@ async function main() {
       let final, extra = [];
       if (table.length >= 5) {
         const inTable = new Set(table.map((x) => x.w));
-        extra = list.filter((d) => d.y && !inTable.has(d.w));
+        extra = list.filter((d) => d.y && !inTable.has(d.w)).map((d) => ({ ...d, s: "wd" }));
         final = [...table, ...extra];
       } else {
-        final = list;
+        final = list.map((d) => ({ ...d, s: "wd" }));
       }
       if (!final.length) throw new Error("no winners returned");
       const ai = awards.push({ list: t, title: r.title, qid: r.qid, url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(r.title.replace(/ /g, "_")) }) - 1;
@@ -334,7 +349,7 @@ async function main() {
       console.log(`  correction: removed ${before - winnersOut.length} row(s) for ${c.qid} from ${c.award}`);
     } else if (works[c.qid]) {
       winnersOut = winnersOut.filter((x) => !(x.a === ai && x.w === c.qid && Math.abs(x.y - (c.year || 0)) <= 1));
-      winnersOut.push({ a: ai, w: c.qid, y: c.year || 0 });
+      winnersOut.push({ a: ai, w: c.qid, y: c.year || 0, s: "fix" });
       console.log(`  correction: added ${works[c.qid].l} (${c.year}) to ${c.award}`);
     } else {
       problems.push(`correction add: ${c.qid} has no English label on Wikidata`);
@@ -352,6 +367,7 @@ async function main() {
     works: Object.fromEntries(Object.entries(works).sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true }))),
   };
   await writeFile(OUT, JSON.stringify(data, null, 0).replace(/\],"/g, '],\n"').replace(/\},"Q/g, '},\n"Q') + "\n");
+  await writeFile(CSV, toCsv(data));
   console.log(`Wrote ${awards.length} awards, ${winnersOut.length} winning entries, ${Object.keys(works).length} works.`);
   if (problems.length) console.warn("Problems:\n  " + problems.join("\n  "));
 }
