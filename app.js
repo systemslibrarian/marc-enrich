@@ -587,7 +587,6 @@ Reply with JSON only and nothing else:
       + `<ul style="margin:8px 0 0;padding-left:20px;font-size:.9rem">${S.found.slice(0, 5).map((c) => `<li>${esc(c.title)}${c.author ? ` <span class="muted">— ${esc(c.author)}</span>` : ""}</li>`).join("")}</ul>`;
     $("#runBtn").disabled = !S.found.length;
     $("#runBtn").textContent = runLabel(o.task, false);
-    if (S.found.length) res.insertAdjacentHTML("beforeend", `<p class="note" style="margin-top:10px">Next: click <strong>${runLabel(o.task, false)}</strong>, then go to <strong>Review</strong> to approve the results.</p>`);
     renderReviewCounts();
   }
 
@@ -1018,7 +1017,41 @@ Reply with JSON only and nothing else:
     }, 600);
   }
 
+  // Four-step guide above the Find / Run buttons
+  function renderFlow() {
+    const el = $("#flow");
+    if (!el) return;
+    const task = S.task;
+    if (task === "find" || !S.src) { el.hidden = true; return; }
+    el.hidden = false;
+    const mine = S.foundTask === task ? S.found : [];
+    const count = (fn) => mine.filter(fn).length;
+    const pending = count((c) => c.status === "queued" || c.status === "working");
+    const ran = mine.length && pending < mine.length;
+    const choose = count((c) => c.status === "review");
+    const matched = count((c) => ["ready", "review", "approved", "rejected"].includes(c.status));
+    const none = count((c) => ["nosource", "nomatch", "skipped"].includes(c.status));
+    const toReview = count(FILTERS[0][2]), approved = count((c) => c.status === "approved");
+    const changed = changedIndexes().length;
+    const run = runLabel(task, false);
+    const steps = [
+      { t: "Find records", d: mine.length ? `${fmt(mine.length)} found` : "Set the options above, then click Find records.", done: !!mine.length },
+      { t: run, d: S.run.active ? `Working… ${fmt(mine.length - pending)} of ${fmt(mine.length)}`
+          : ran ? `${fmt(matched)} ${task === "awards" ? "matched" : "with results"}${choose ? ` (${fmt(choose)} need a choice)` : ""} · ${fmt(none)} ${task === "awards" ? "not winners" : "without a source"}${pending ? ` · ${fmt(pending)} not run yet` : ""}`
+          : mine.length ? `Click ${run} below.` : "After step 1.", done: ran && !pending && !S.run.active },
+      { t: "Review and approve", d: ran ? `${fmt(toReview)} to review · ${fmt(approved)} approved` : "After step 2.", done: approved > 0 && toReview === 0,
+        go: ran ? ["review", "Open Review"] : null },
+      { t: "Export", d: changed ? `${fmt(changed)} changed record${changed === 1 ? "" : "s"} ready to download` : "After you approve results.", done: S.exported && changed > 0,
+        go: changed ? ["export", "Open Export"] : null },
+    ];
+    const current = steps.findIndex((s) => !s.done);
+    el.innerHTML = steps.map((s, k) => `<li class="${s.done ? "done" : k === current ? "current" : "todo"}" ${k === current ? 'aria-current="step"' : ""}>
+      <span class="n" aria-hidden="true">${s.done ? "✓" : k + 1}</span><span class="t">${esc(s.t)}</span><span class="d">${esc(s.d)}</span>
+      ${s.go ? `<button class="btn small go ${k === current ? "primary" : ""}" type="button" data-go="${s.go[0]}">${esc(s.go[1])}</button>` : ""}</li>`).join("");
+  }
+
   function renderReviewCounts() {
+    renderFlow();
     const n = S.found.filter(FILTERS[0][2]).length;
     const rc = $("#reviewCount");
     rc.hidden = !n; rc.textContent = fmt(n);
@@ -1354,6 +1387,7 @@ Reply with JSON only and nothing else:
     lg.textContent = problems.join("\n");
     download(`${baseName()}-${scope === "changed" ? "changed" : "enriched"}.${format}`, parts, format === "mrc" ? "application/marc" : "text/plain;charset=utf-8");
     S.exported = true;
+    renderFlow();
     toast(`Exported ${fmt(idx.length)} records.`);
   }
 
@@ -1410,6 +1444,7 @@ Reply with JSON only and nothing else:
     $("#runBtn").hidden = S.task === "find";
     $("#runBtn").disabled = !(S.foundTask === S.task && S.found.some((c) => c.status === "queued" || c.status === "error"));
     $("#runBtn").textContent = runLabel(S.task, S.foundTask === S.task && S.found.some((c) => c.status !== "queued" && c.status !== "working"));
+    renderFlow();
   }
 
   // ---------- events ----------
@@ -1539,6 +1574,7 @@ Reply with JSON only and nothing else:
     $("#expMrc").addEventListener("click", () => exportRecords("mrc"));
     $("#expMrk").addEventListener("click", () => exportRecords("mrk"));
     $("#expCsv").addEventListener("click", exportReport);
+    $("#flow").addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) selectTab(b.dataset.go); });
 
     ["apiKey", "gbKey", "rememberKey"].forEach((id) => $("#" + id).addEventListener("change", saveSettings));
     window.addEventListener("beforeunload", (e) => { if ((S.changes.size || S.edits.size || S.editing) && !S.exported) { e.preventDefault(); e.returnValue = ""; } });
