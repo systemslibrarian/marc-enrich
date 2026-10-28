@@ -53,7 +53,7 @@ Each row is marked with its source: *Wikipedia winner table* (most wins), *Wikid
 
 ## Award lists included
 
-Academy Award for Best Picture; Academy Award for Best Original Screenplay; Primetime Emmy Awards for Outstanding Comedy Series, Drama Series, and Limited or Anthology Series; Golden Globe Awards for Best Motion Picture – Drama, Musical or Comedy, and Non-English Language; Best Animated Feature Film; Best Screenplay; Best Television Series – Drama and Musical or Comedy; and Best Limited or Anthology Series or Television Film. 586 text defaults to `{award}, {year}`, using the award's current Wikipedia title.
+Academy Award for Best Picture; Academy Award for Best Original Screenplay; Primetime Emmy Awards for Outstanding Comedy Series, Drama Series, and Limited or Anthology Series; Golden Globe Awards for Best Motion Picture – Drama, Musical or Comedy, and Non-English Language; Best Animated Feature Film; Best Screenplay; Best Television Series – Drama and Musical or Comedy; and Best Limited or Anthology Series or Television Film. Awards can be written to **586** (standard Awards note), a local **593** (film & TV awards, alongside LCPL's 591 for book awards), or both. Each has its own wording template — `{award}`, `{year}`, and `$a`/`$b` for subfields; the 586 default is `{award}, {year}`. An award already in a 586 or 593 is skipped.
 
 ## Cataloging rules built in
 

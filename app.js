@@ -26,7 +26,7 @@
     "651": "Subject — geographic", "655": "Genre/form", "690": "Local subject", "700": "Added entry — personal name", "710": "Added entry — corporate name",
     "711": "Added entry — meeting name", "730": "Added entry — uniform title", "740": "Added entry — related title", "776": "Additional physical form entry",
     "800": "Series added entry — personal name", "810": "Series added entry — corporate name", "811": "Series added entry — meeting name", "830": "Series added entry — uniform title",
-    "856": "Electronic location and access", "880": "Alternate graphic representation", "596": "Local note", "590": "Local note", "999": "Local holdings / item data",
+    "856": "Electronic location and access", "880": "Alternate graphic representation", "596": "Local note", "590": "Local note", "591": "Local award note — books", "593": "Local award note — film & TV", "999": "Local holdings / item data",
   };
   const tagName = (t) => TAG_NAMES[t] || (/^9/.test(t) ? "Local field" : /^59/.test(t) ? "Local note" : "");
 
@@ -90,6 +90,7 @@
 =264  \1$aLondon :$bPenguin Books,$c2003.
 =300  \\$axliv, 435 pages ;$c20 cm.
 =490  1\$aPenguin classics
+=590  \\$aDonated by the Friends of the Library.
 =650  \0$aCourtship$vFiction.
 
 =LDR  00000nam\a2200000\i\4500
@@ -129,6 +130,7 @@
 =100  1\$aRowling, J. K.,$eauthor.
 =245  10$aHarry Potter and the sorcerer's stone /$cJ.K. Rowling ; illustrations by Mary GrandPré.
 =264  \1$aNew York :$bArthur A. Levine Books,$c1998.
+=591  \\$aBook Awards$bALA Notable Children's Book
 =650  \0$aWizards$vFiction.
 
 =LDR  00000ngm\a2200000\i\4500
@@ -281,6 +283,8 @@
       serAdd490: $("#serAdd490").checked, serUri: $("#serUri").checked, serAI: $("#serAI").checked,
       awdType: $("#awdType").value, awdMode: $("#awdMode").value, awdLimit: +$("#awdLimit").value || 0,
       awdTpl: $("#awdTpl").value.trim() || "{award}, {year}",
+      awd586: $("#awd586").checked, awd593: $("#awd593").checked,
+      awdTpl593: $("#awdTpl593").value.trim() || "$aFilm & TV Awards$b{award}, {year}",
       awdTitles: $$("#awdList input:checked").map((x) => x.value),
       findTags: $("#findTags").value, findCond: $("#findCond").value, findType: $("#findType").value,
       apiKey: $("#apiKey").value.trim(), model: $("#model").value.trim() || "claude-haiku-5-5",
@@ -289,7 +293,7 @@
     };
   }
   const SETTING_IDS = ["sumType", "sumLimit", "sumWords", "sumInd1", "sumC", "sumNote", "srcOL", "srcGB", "srcTitle", "sumNoAI",
-    "serType", "serLimit", "serAdd490", "serUri", "serAI", "awdType", "awdMode", "awdLimit", "awdTpl", "findTags", "findCond", "findType", "model", "endpoint", "concurrency", "rememberKey"];
+    "serType", "serLimit", "serAdd490", "serUri", "serAI", "awdType", "awdMode", "awdLimit", "awdTpl", "awd586", "awd593", "awdTpl593", "findTags", "findCond", "findType", "model", "endpoint", "concurrency", "rememberKey"];
   function saveSettings() {
     const o = {};
     for (const id of SETTING_IDS) { const el = $("#" + id); o[id] = el.type === "checkbox" ? el.checked : el.value; }
@@ -508,7 +512,7 @@ Reply with JSON only and nothing else:
   function selector(o) {
     const SERIES_8XX = ["800", "810", "811", "830"];
     if (o.task === "summary") return { type: o.sumType, test: (tags) => !tags.has("520") };
-    if (o.task === "awards") return { type: o.awdType, test: (tags) => o.awdMode !== "no586" || !tags.has("586") };
+    if (o.task === "awards") return { type: o.awdType, test: (tags) => o.awdMode !== "no586" || (!tags.has("586") && !tags.has("593")) };
     if (o.task === "series") {
       if (o.serMode === "untraced") return { type: o.serType, test: (tags) => tags.has("490") && !SERIES_8XX.some((t) => tags.has(t)) };
       return { type: o.serType, test: (tags) => !tags.has("490") && !tags.has("440") && !SERIES_8XX.some((t) => tags.has(t)) };
@@ -608,6 +612,7 @@ Reply with JSON only and nothing else:
     if (S.foundTask === "summary" && !o.srcOL && !o.srcGB && !o.srcTitle) return toast("Choose at least one place to look.");
     if (S.foundTask === "awards") {
       if (!o.awdTitles.length) return toast("Choose at least one award list.");
+      if (!o.awd586 && !o.awd593) return toast("Choose 586, 593 or both under Write awards to.");
       log("Loading the saved award winner lists…");
       try {
         const { report } = await loadAwardIndex(o);
@@ -847,7 +852,7 @@ Reply with JSON only and nothing else:
     if (!found.length) { c.status = "nosource"; c.note = "Not a winner in the selected award lists"; return; }
     const people = recordPeopleText(rec);
     const years = recordYears(rec);
-    const existing = M.getFields(rec, "586").map((f) => norm(M.sub(f, "a").join(" ")));
+    const existing = M.getFields(rec, /^(586|593)$/).map((f) => norm(f.subfields.map((s) => s[1]).join(" ")));
     for (const e of found) {
       const dir = e.directors.find((d) => { const last = norm(d).split(" ").pop(); return last.length > 2 && people.includes(" " + last + " "); });
       const isSeries = !!e.start && !e.pubYear;
@@ -894,11 +899,19 @@ Reply with JSON only and nothing else:
     const o = c.opts || opts();
     const p = c.props || {};
     if (task === "awards") {
-      return (p.matches || []).filter((m) => m.checked && !m.already).map((m) => ({
-        tag: "586", ind1: " ", ind2: " ",
-        subfields: [["a", (o.awdTpl || "{award}, {year}").replace(/\{award\}/g, m.award)
-          .replace(m.year ? /\{year\}/g : /[\s,;:–-]*\{year\}/g, m.year ? String(m.year) : "").trim()]],
-      }));
+      const fill = (tpl, m) => tpl.replace(/\{award\}/g, m.award)
+        .replace(m.year ? /\{year\}/g : /[\s,;:–-]*\{year\}/g, m.year ? String(m.year) : "").trim();
+      // "$aFilm & TV Awards$b..." -> subfields; plain text -> $a
+      const subs = (text) => text.startsWith("$")
+        ? text.split("$").slice(1).filter(Boolean).map((part) => [part[0], part.slice(1).trim()])
+        : [["a", text]];
+      const want586 = o.awd586 !== false, want593 = !!o.awd593;
+      const out = [];
+      for (const m of (p.matches || []).filter((x) => x.checked && !x.already)) {
+        if (want586) out.push({ tag: "586", ind1: " ", ind2: " ", subfields: subs(fill(o.awdTpl || "{award}, {year}", m)) });
+        if (want593) out.push({ tag: "593", ind1: " ", ind2: " ", subfields: subs(fill(o.awdTpl593 || "$aFilm & TV Awards$b{award}, {year}", m)) });
+      }
+      return out.sort((a, b) => (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0));
     }
     if (task === "summary") {
       const text = (p.summary || "").trim();
@@ -1216,7 +1229,10 @@ Reply with JSON only and nothing else:
     const body = $("#tagTable tbody");
     if (!S.src) { body.innerHTML = ""; return; }
     const total = S.src.count;
-    const rows = [...S.tagCounts.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    // always list the notes this tool works with, even when no record has them yet
+    const counts = new Map(S.tagCounts);
+    for (const t of ["520", "586", "590", "591", "593"]) if (!counts.has(t)) counts.set(t, 0);
+    const rows = [...counts.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
     body.innerHTML = rows.map(([t, n]) => `<tr><td class="tag">${esc(t)}</td><td>${esc(tagName(t))}<div class="bar"><i style="width:${(100 * n) / total}%"></i></div></td>
       <td class="num">${fmt(n)}<br><small>${Math.round((100 * n) / total)}%</small></td>
       <td>${n < total && !M.isControlTag(t) ? `<button class="linkbtn" data-missing="${esc(t)}">Find missing</button>` : ""}</td></tr>`).join("");

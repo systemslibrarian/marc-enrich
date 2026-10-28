@@ -397,10 +397,22 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
       <label class="fld"><span>Record types</span>
         <select id="awdType"><option value="text">Books and text (Leader/06 a, t)</option><option value="audio">Audiobooks (Leader/06 i)</option><option value="video" selected>Video — DVD, Blu-ray (Leader/06 g)</option><option value="media">Books, audiobooks and video</option><option value="all">All record types</option></select></label>
       <label class="fld"><span>Which records</span>
-        <select id="awdMode"><option value="all">All of them (awards already in a 586 are skipped)</option><option value="no586">Only records with no 586</option></select></label>
+        <select id="awdMode"><option value="all">All of them (awards already noted are skipped)</option><option value="no586">Only records with no 586 or 593</option></select></label>
       <label class="fld"><span>How many records this run</span><input type="number" id="awdLimit" min="0" value="0"><small>0 = all. Matching is local, so whole files are fine.</small></label>
-      <label class="fld"><span>586 text</span><input type="text" id="awdTpl" value="{award}, {year}"><small>{award} is the award's Wikipedia title; {year} the year of the award.</small></label>
     </div>
+    <fieldset style="margin-top:14px"><legend>Write awards to</legend>
+      <div class="form">
+        <div class="fld">
+          <label class="check"><input type="checkbox" id="awd586" checked> <span><strong>586</strong> Awards note (standard MARC)</span></label>
+          <input type="text" id="awdTpl" value="{award}, {year}" aria-label="586 wording">
+        </div>
+        <div class="fld">
+          <label class="check"><input type="checkbox" id="awd593" checked> <span><strong>593</strong> Local film &amp; TV award note</span></label>
+          <input type="text" id="awdTpl593" value="$aFilm &amp; TV Awards$b{award}, {year}" aria-label="593 wording">
+        </div>
+      </div>
+      <small class="muted" style="display:block;margin-top:6px">{award} is the award's name and {year} the year it was awarded. Use $a, $b… to split subfields; text without a $ goes in $a. LCPL uses 591 the same way for book awards.</small>
+    </fieldset>
     <fieldset style="margin-top:14px"><legend>Winner lists to check</legend>
       <div class="radios" id="awdList"></div>
     </fieldset>
