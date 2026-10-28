@@ -1,17 +1,21 @@
 # Award winner lists built into data/awards.json.
-# One English Wikipedia article title per line. Lines starting with # are ignored.
+#
+# One award per line:   English Wikipedia article title | short name for local notes
+# The short name fills {name} in the 593 wording (LCPL style: "{name} Winner {year}",
+# matching 591 book-award notes such as "Alex Award Winner 2026"). Leave it off to use
+# a shortened form of the Wikipedia title. Lines starting with # are ignored.
 # After editing, run the "Update award data" workflow (Actions tab) to rebuild.
 
-Academy Award for Best Picture
-Academy Award for Best Original Screenplay
-Primetime Emmy Award for Outstanding Comedy Series
-Primetime Emmy Award for Outstanding Drama Series
-Primetime Emmy Award for Outstanding Limited or Anthology Series
-Golden Globe Award for Best Motion Picture – Drama
-Golden Globe Award for Best Motion Picture – Musical or Comedy
-Golden Globe Award for Best Motion Picture – Non-English Language
-Golden Globe Award for Best Animated Feature Film
-Golden Globe Award for Best Screenplay
-Golden Globe Award for Best Television Series – Drama
-Golden Globe Award for Best Television Series – Musical or Comedy
-Golden Globe Award for Best Limited or Anthology Series or Television Film
+Academy Award for Best Picture | Academy Award - Best Picture
+Academy Award for Best Original Screenplay | Academy Award - Original Screenplay
+Primetime Emmy Award for Outstanding Comedy Series | Emmy Award - Outstanding Comedy Series
+Primetime Emmy Award for Outstanding Drama Series | Emmy Award - Outstanding Drama Series
+Primetime Emmy Award for Outstanding Limited or Anthology Series | Emmy Award - Outstanding Limited or Anthology Series
+Golden Globe Award for Best Motion Picture – Drama | Golden Globe Award - Best Motion Picture - Drama
+Golden Globe Award for Best Motion Picture – Musical or Comedy | Golden Globe Award - Best Motion Picture - Musical or Comedy
+Golden Globe Award for Best Motion Picture – Non-English Language | Golden Globe Award - Best Motion Picture - Non-English Language
+Golden Globe Award for Best Animated Feature Film | Golden Globe Award - Best Motion Picture - Animated
+Golden Globe Award for Best Screenplay | Golden Globe Award - Best Screenplay
+Golden Globe Award for Best Television Series – Drama | Golden Globe Award - Best Television Series - Drama
+Golden Globe Award for Best Television Series – Musical or Comedy | Golden Globe Award - Best Television Series - Musical or Comedy
+Golden Globe Award for Best Limited or Anthology Series or Television Film | Golden Globe Award - Best Miniseries or Motion Picture - Television

@@ -408,10 +408,10 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
         </div>
         <div class="fld">
           <label class="check"><input type="checkbox" id="awd593" checked> <span><strong>593</strong> Local film &amp; TV award note</span></label>
-          <input type="text" id="awdTpl593" value="$aFilm &amp; TV Awards$b{award}, {year}" aria-label="593 wording">
+          <input type="text" id="awdTpl593" value="{name} Winner {year}" aria-label="593 wording">
         </div>
       </div>
-      <small class="muted" style="display:block;margin-top:6px">{award} is the award's name and {year} the year it was awarded. Use $a, $b… to split subfields; text without a $ goes in $a. LCPL uses 591 the same way for book awards.</small>
+      <small class="muted" style="display:block;margin-top:6px">{award} is the full award title, {name} the short local name (e.g. "Academy Award - Best Picture"), {year} the year awarded. The 593 default matches 591 book-award notes such as "Alex Award Winner 2026". Text without a $ goes in $a; use $a, $b… to split subfields.</small>
     </fieldset>
     <fieldset style="margin-top:14px"><legend>Winner lists to check</legend>
       <div class="radios" id="awdList"></div>

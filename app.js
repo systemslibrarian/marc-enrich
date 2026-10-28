@@ -26,7 +26,7 @@
     "651": "Subject — geographic", "655": "Genre/form", "690": "Local subject", "700": "Added entry — personal name", "710": "Added entry — corporate name",
     "711": "Added entry — meeting name", "730": "Added entry — uniform title", "740": "Added entry — related title", "776": "Additional physical form entry",
     "800": "Series added entry — personal name", "810": "Series added entry — corporate name", "811": "Series added entry — meeting name", "830": "Series added entry — uniform title",
-    "856": "Electronic location and access", "880": "Alternate graphic representation", "596": "Local note", "590": "Local note", "591": "Local award note — books", "593": "Local award note — film & TV", "999": "Local holdings / item data",
+    "856": "Electronic location and access", "880": "Alternate graphic representation", "596": "Local: holding libraries", "590": "Local note", "591": "Local award note — books", "593": "Local award note — film & TV", "999": "Local holdings / item data",
   };
   const tagName = (t) => TAG_NAMES[t] || (/^9/.test(t) ? "Local field" : /^59/.test(t) ? "Local note" : "");
 
@@ -90,7 +90,7 @@
 =264  \1$aLondon :$bPenguin Books,$c2003.
 =300  \\$axliv, 435 pages ;$c20 cm.
 =490  1\$aPenguin classics
-=590  \\$aDonated by the Friends of the Library.
+=590  \\$aFormer NYT Bestseller
 =650  \0$aCourtship$vFiction.
 
 =LDR  00000nam\a2200000\i\4500
@@ -130,7 +130,8 @@
 =100  1\$aRowling, J. K.,$eauthor.
 =245  10$aHarry Potter and the sorcerer's stone /$cJ.K. Rowling ; illustrations by Mary GrandPré.
 =264  \1$aNew York :$bArthur A. Levine Books,$c1998.
-=591  \\$aBook Awards$bALA Notable Children's Book
+=591  \\$aALA Notable Children's Book 1999
+=596  \\$aMAIN LAKEJAX
 =650  \0$aWizards$vFiction.
 
 =LDR  00000ngm\a2200000\i\4500
@@ -284,7 +285,7 @@
       awdType: $("#awdType").value, awdMode: $("#awdMode").value, awdLimit: +$("#awdLimit").value || 0,
       awdTpl: $("#awdTpl").value.trim() || "{award}, {year}",
       awd586: $("#awd586").checked, awd593: $("#awd593").checked,
-      awdTpl593: $("#awdTpl593").value.trim() || "$aFilm & TV Awards$b{award}, {year}",
+      awdTpl593: $("#awdTpl593").value.trim() || "{name} Winner {year}",
       awdTitles: $$("#awdList input:checked").map((x) => x.value),
       findTags: $("#findTags").value, findCond: $("#findCond").value, findType: $("#findType").value,
       apiKey: $("#apiKey").value.trim(), model: $("#model").value.trim() || "claude-haiku-5-5",
@@ -311,6 +312,7 @@
       const r = $(`input[name=serMode][value="${o.serMode}"]`); if (r) r.checked = true;
       if (o.task) { const t = $(`input[name=task][value="${o.task}"]`); if (t) { t.checked = true; S.task = o.task; } }
     }
+    if ($("#awdTpl593").value === "$aFilm & TV Awards$b{award}, {year}") $("#awdTpl593").value = "{name} Winner {year}";
     const k = store.get("keys", null);
     if (k) { $("#apiKey").value = k.apiKey || ""; $("#gbKey").value = k.gbKey || ""; }
   }
@@ -788,6 +790,9 @@ Reply with JSON only and nothing else:
     }
   }
 
+  // "Academy Award for Best Picture" -> "Academy Award - Best Picture" (used until the data carries LCPL names)
+  const shortAward = (t) => t.replace(/^Primetime /, "").replace(/ for /, " - ").replace(/\s*–\s*/g, " - ");
+
   async function loadAwardIndex(o) {
     const key = o.awdTitles.join("|");
     if (awardIndex.value && awardIndex.key === key) return awardIndex.value;
@@ -803,7 +808,7 @@ Reply with JSON only and nothing else:
         const w = d.works[row.w];
         if (!w) continue;
         n++;
-        const e = { award: aw.title, awardUrl: aw.url, work: w.l, workUrl: "https://www.wikidata.org/wiki/" + row.w,
+        const e = { award: aw.title, name: aw.name || shortAward(aw.title), awardUrl: aw.url, work: w.l, workUrl: "https://www.wikidata.org/wiki/" + row.w,
           year: row.y, pubYear: w.p, start: w.s, end: w.e, directors: w.d || [] };
         for (const name of [w.l, ...(w.alt || [])]) { addKey(norm(name), e); if (name.includes(":")) addKey(norm(name.split(":")[0]), e); }
       }
@@ -862,7 +867,7 @@ Reply with JSON only and nothing else:
         : years.find((y) => (e.pubYear && Math.abs(y - e.pubYear) <= 1) || (e.year && Math.abs(y - e.year) <= 1));
       const inRun = isSeries && years.some((y) => y >= e.start - 1 && y <= (e.end || e.start + 30) + 1);
       const strong = !!(dir || yr);
-      const already = existing.some((x) => x.includes(norm(e.award).replace(/^.*? for /, "")) && (!e.year || x.includes(String(e.year))));
+      const already = existing.some((x) => (x.includes(norm(e.award).replace(/^.*? for /, "")) || x.includes(norm(e.name || ""))) && (!e.year || x.includes(String(e.year))));
       c.props.matches.push({
         ...e, strong, already, checked: strong && !already,
         why: already ? "already in a 586" : dir ? "director " + dir + " matches" : yr ? "year " + yr + " fits"
@@ -899,7 +904,7 @@ Reply with JSON only and nothing else:
     const o = c.opts || opts();
     const p = c.props || {};
     if (task === "awards") {
-      const fill = (tpl, m) => tpl.replace(/\{award\}/g, m.award)
+      const fill = (tpl, m) => tpl.replace(/\{award\}/g, m.award).replace(/\{name\}/g, m.name || m.award)
         .replace(m.year ? /\{year\}/g : /[\s,;:–-]*\{year\}/g, m.year ? String(m.year) : "").trim();
       // "$aFilm & TV Awards$b..." -> subfields; plain text -> $a
       const subs = (text) => text.startsWith("$")
@@ -909,7 +914,7 @@ Reply with JSON only and nothing else:
       const out = [];
       for (const m of (p.matches || []).filter((x) => x.checked && !x.already)) {
         if (want586) out.push({ tag: "586", ind1: " ", ind2: " ", subfields: subs(fill(o.awdTpl || "{award}, {year}", m)) });
-        if (want593) out.push({ tag: "593", ind1: " ", ind2: " ", subfields: subs(fill(o.awdTpl593 || "$aFilm & TV Awards$b{award}, {year}", m)) });
+        if (want593) out.push({ tag: "593", ind1: " ", ind2: " ", subfields: subs(fill(o.awdTpl593 || "{name} Winner {year}", m)) });
       }
       return out.sort((a, b) => (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0));
     }

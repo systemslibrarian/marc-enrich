@@ -251,7 +251,11 @@ async function readCorrections() {
 }
 
 async function main() {
-  const titles = (await readFile(LISTS, "utf8")).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+  // "Wikipedia title | short local name" per line
+  const names = {};
+  const titles = (await readFile(LISTS, "utf8")).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"))
+    .map((l) => { const [t, n] = l.split("|").map((s) => s.trim()); if (n) names[t] = n; return t; });
+  const shortName = (title) => title.replace(/^Primetime /, "").replace(/ for /, " - ").replace(/\s*–\s*/g, " - ");
   let previous = null;
   try { previous = JSON.parse(await readFile(OUT, "utf8")); } catch { /* first build */ }
 
@@ -267,7 +271,7 @@ async function main() {
     const keepPrevious = (why) => {
       problems.push(`${t}: ${why}`);
       if (!prevAward) return;
-      const ai = awards.push({ ...prevAward }) - 1;
+      const ai = awards.push({ ...prevAward, name: names[t] || prevAward.name || shortName(prevAward.title) }) - 1;
       const oldIndex = previous.awards.indexOf(prevAward);
       for (const w of previous.winners.filter((x) => x.a === oldIndex)) rows.push({ a: ai, w: w.w, y: w.y, s: w.s || "wd" });
       console.warn(`  kept ${previous.winners.filter((x) => x.a === oldIndex).length} winners from the previous build`);
@@ -298,7 +302,7 @@ async function main() {
         final = list.map((d) => ({ ...d, s: "wd" }));
       }
       if (!final.length) throw new Error("no winners returned");
-      const ai = awards.push({ list: t, title: r.title, qid: r.qid, url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(r.title.replace(/ /g, "_")) }) - 1;
+      const ai = awards.push({ list: t, title: r.title, name: names[t] || shortName(r.title), qid: r.qid, url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(r.title.replace(/ /g, "_")) }) - 1;
       for (const x of final) rows.push({ a: ai, ...x });
       console.log(table.length >= 5
         ? `  ${r.title} (${r.qid}): ${table.length} from the Wikipedia table + ${extra.length} more from Wikidata`
