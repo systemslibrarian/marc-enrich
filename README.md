@@ -10,7 +10,7 @@ Everything runs in the browser. There is no server: the MARC file is read locall
 2. **Task** — pick what to do:
    - **Add summaries (520).** Finds records with no 520, pulls descriptions from Open Library and Google Books by ISBN, and has Claude condense them into a neutral 1–3 sentence note. If no source describes the book, the record is skipped, not guessed at.
    - **Add series (490/830).** Either traces existing 490s that have no 800/810/811/830, or looks up series for records with none. Every 8XX heading comes from the Library of Congress Name Authority File via id.loc.gov, with `$0` URI. AI only chooses among real authorities when several are close; exact matches skip it.
-   - **Add awards (586).** Matches video records (Leader/06 `g`) against Oscar, Emmy and Golden Globe winner lists. Each list comes from the award's Wikipedia article, resolved to Wikidata, where the winners are queried. A title match is confirmed only when the director's name or the years in the record agree; title-only matches wait for review. For TV series, only the award from the season's own year is pre-ticked. Add any other award by its Wikipedia title.
+   - **Add awards (586).** Matches video records against saved Oscar, Emmy and Golden Globe winner lists (`data/awards.json`) — no live lookups. A title match is confirmed only when the director's name or the years in the record agree; title-only matches wait for review. For TV series, only the award from the season's own year is pre-ticked.
    - **Find records by field.** List records missing (or having) any tags, e.g. `6XX, 830`. Export the list as CSV or just those records as `.mrc`/`.mrk`.
 3. **Review** — each record shows the source text next to the proposed fields. Edit, approve, reject, or retry. Nothing is written without approval.
 4. **Export** — changed records only (for an overlay load) or the whole file with changes applied, plus a CSV report of every lookup.
@@ -21,13 +21,23 @@ Everything runs in the browser. There is no server: the MARC file is read locall
 2. Settings → Pages → Deploy from a branch → `main` / root.
 3. Open `https://<user>.github.io/<repo>/`.
 
-It also runs by opening `index.html` directly from disk.
+It also runs by opening `index.html` directly from disk, except the awards task, which needs the page served over the web to read its data file.
 
 ## API keys
 
 - **Anthropic API key** is needed for AI summaries and series tie-breaking. It is sent only to the endpoint set in *AI and lookup settings* and is kept in memory unless *Remember* is ticked.
 - For shared staff use, point the endpoint at a small proxy (for example a Cloudflare Worker) that adds the key server-side, so nobody pastes a key into a browser.
 - **Google Books API key** is optional; it raises Google's daily request limit for large runs.
+
+## Record types
+
+Every task can be limited by Leader/06: books and text (`a`, `t`), audiobooks (`i`), video — DVD and Blu-ray (`g`), all three together, or all record types.
+
+## Award data
+
+Winner lists are saved in `data/awards.json` so the page never waits on Wikidata. The **Update award data** workflow rebuilds the file from Wikipedia and Wikidata every October 1 (after the Golden Globes, Oscars and Emmys) and redeploys the site. Run it any time from the Actions tab with **Run workflow**. If one award fails to load, last year's winners for that award are kept.
+
+To add a list (BAFTA, Independent Spirit, etc.), add its English Wikipedia article title to `data/award-lists.txt` and run the workflow.
 
 ## Award lists included
 

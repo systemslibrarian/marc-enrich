@@ -294,7 +294,7 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
       <label class="task"><input type="radio" name="task" value="series"><strong>Add series <span class="mono">490 / 830</span></strong>
         <p>Trace untraced 490s, or find series for records with none, and match each to a Library of Congress series authority.</p></label>
       <label class="task"><input type="radio" name="task" value="awards"><strong>Add awards <span class="mono">586</span></strong>
-        <p>Match films and TV series on DVD and Blu-ray against Oscar, Emmy and Golden Globe winner lists from Wikipedia and Wikidata.</p></label>
+        <p>Match films and TV series on DVD and Blu-ray against saved Oscar, Emmy and Golden Globe winner lists.</p></label>
       <label class="task"><input type="radio" name="task" value="find"><strong>Find records by field</strong>
         <p>List records that are missing (or have) any tags you name. Export the list or just those records. No lookups.</p></label>
     </div>
@@ -305,7 +305,7 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
     <h3>Summary options</h3>
     <div class="form">
       <label class="fld"><span>Record types</span>
-        <select id="sumType"><option value="text">Books and text (Leader/06 a, t)</option><option value="all">All record types</option></select></label>
+        <select id="sumType"><option value="text" selected>Books and text (Leader/06 a, t)</option><option value="audio">Audiobooks (Leader/06 i)</option><option value="video">Video — DVD, Blu-ray (Leader/06 g)</option><option value="media">Books, audiobooks and video</option><option value="all">All record types</option></select></label>
       <label class="fld"><span>How many records this run</span>
         <input type="number" id="sumLimit" min="0" value="200"><small>Start with a sample you can check by hand. 0 = all.</small></label>
       <label class="fld"><span>Maximum words</span><input type="number" id="sumWords" min="15" max="200" value="60"></label>
@@ -338,7 +338,7 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
     </fieldset>
     <div class="form" style="margin-top:14px">
       <label class="fld"><span>Record types</span>
-        <select id="serType"><option value="text">Books and text (Leader/06 a, t)</option><option value="all">All record types</option></select></label>
+        <select id="serType"><option value="text" selected>Books and text (Leader/06 a, t)</option><option value="audio">Audiobooks (Leader/06 i)</option><option value="video">Video — DVD, Blu-ray (Leader/06 g)</option><option value="media">Books, audiobooks and video</option><option value="all">All record types</option></select></label>
       <label class="fld"><span>How many records this run</span><input type="number" id="serLimit" min="0" value="200"><small>0 = all.</small></label>
     </div>
     <div class="radios" style="margin-top:14px">
@@ -354,7 +354,7 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
     <h3>Award options</h3>
     <div class="form">
       <label class="fld"><span>Record types</span>
-        <select id="awdType"><option value="video">Video — DVD, Blu-ray (Leader/06 g)</option><option value="all">All record types</option></select></label>
+        <select id="awdType"><option value="text">Books and text (Leader/06 a, t)</option><option value="audio">Audiobooks (Leader/06 i)</option><option value="video" selected>Video — DVD, Blu-ray (Leader/06 g)</option><option value="media">Books, audiobooks and video</option><option value="all">All record types</option></select></label>
       <label class="fld"><span>Which records</span>
         <select id="awdMode"><option value="all">All of them (awards already in a 586 are skipped)</option><option value="no586">Only records with no 586</option></select></label>
       <label class="fld"><span>How many records this run</span><input type="number" id="awdLimit" min="0" value="0"><small>0 = all. Matching is local, so whole files are fine.</small></label>
@@ -363,9 +363,7 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
     <fieldset style="margin-top:14px"><legend>Winner lists to check</legend>
       <div class="radios" id="awdList"></div>
     </fieldset>
-    <label class="fld" style="margin-top:14px"><span>More awards (optional)</span>
-      <textarea id="awdExtra" rows="3" placeholder="One Wikipedia article title per line, e.g. BAFTA Award for Best Film"></textarea>
-      <small>Any award whose winners are recorded on Wikidata works.</small></label>
+    <p class="note" id="awdInfo" style="margin-top:14px"></p>
     <p class="note" style="margin-top:14px">A title match alone is not enough: a match is marked confirmed only when the director's name or the release years in your record agree with Wikidata. Title-only matches wait for your review.</p>
   </div>
 
@@ -377,7 +375,7 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
       <label class="fld"><span>Condition</span>
         <select id="findCond"><option value="missingAll">Missing all of these</option><option value="missingAny">Missing any of these</option><option value="hasAny">Has any of these</option></select></label>
       <label class="fld"><span>Record types</span>
-        <select id="findType"><option value="all">All record types</option><option value="text">Books and text (Leader/06 a, t)</option></select></label>
+        <select id="findType"><option value="text">Books and text (Leader/06 a, t)</option><option value="audio">Audiobooks (Leader/06 i)</option><option value="video">Video — DVD, Blu-ray (Leader/06 g)</option><option value="media">Books, audiobooks and video</option><option value="all" selected>All record types</option></select></label>
     </div>
   </div>
 

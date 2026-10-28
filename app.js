@@ -30,23 +30,6 @@
   };
   const tagName = (t) => TAG_NAMES[t] || (/^9/.test(t) ? "Local field" : /^59/.test(t) ? "Local note" : "");
 
-  // Award winner lists. Title = English Wikipedia article (resolved to Wikidata at run time).
-  const AWARD_PRESETS = [
-    "Academy Award for Best Picture",
-    "Academy Award for Best Original Screenplay",
-    "Primetime Emmy Award for Outstanding Comedy Series",
-    "Primetime Emmy Award for Outstanding Drama Series",
-    "Primetime Emmy Award for Outstanding Limited or Anthology Series",
-    "Golden Globe Award for Best Motion Picture – Drama",
-    "Golden Globe Award for Best Motion Picture – Musical or Comedy",
-    "Golden Globe Award for Best Motion Picture – Non-English Language",
-    "Golden Globe Award for Best Animated Feature Film",
-    "Golden Globe Award for Best Screenplay",
-    "Golden Globe Award for Best Television Series – Drama",
-    "Golden Globe Award for Best Television Series – Musical or Comedy",
-    "Golden Globe Award for Best Limited or Anthology Series or Television Film",
-  ];
-
   const S = {
     src: null,
     tagCounts: new Map(),
@@ -257,7 +240,9 @@
     return f && /^\d{4}$/.test(f.data.substr(7, 4)) ? f.data.substr(7, 4) : "";
   }
   const recId = (rec) => plain((M.getFields(rec, "001")[0] || {}).data || "");
-  const typeOk = (ldr, type) => type === "all" || (type === "video" ? ldr[6] === "g" : "at".includes(ldr[6]));
+  // Leader/06 codes for each record-type choice
+  const TYPE_CODES = { text: "at", audio: "i", video: "g", media: "atig" };
+  const typeOk = (ldr, type) => type === "all" || (TYPE_CODES[type] || "at").includes(ldr[6]);
 
   const norm = (s) => plain(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
     .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim().replace(/^(the|a|an) /, "");
@@ -281,8 +266,7 @@
       serAdd490: $("#serAdd490").checked, serUri: $("#serUri").checked, serAI: $("#serAI").checked,
       awdType: $("#awdType").value, awdMode: $("#awdMode").value, awdLimit: +$("#awdLimit").value || 0,
       awdTpl: $("#awdTpl").value.trim() || "{award}, {year}",
-      awdTitles: [...$$("#awdList input:checked").map((x) => x.value),
-        ...$("#awdExtra").value.split(/\n/).map((x) => x.trim()).filter(Boolean)],
+      awdTitles: $$("#awdList input:checked").map((x) => x.value),
       findTags: $("#findTags").value, findCond: $("#findCond").value, findType: $("#findType").value,
       apiKey: $("#apiKey").value.trim(), model: $("#model").value.trim() || "claude-haiku-5-5",
       endpoint: $("#endpoint").value.trim() || "https://api.anthropic.com/v1/messages",
@@ -290,7 +274,7 @@
     };
   }
   const SETTING_IDS = ["sumType", "sumLimit", "sumWords", "sumInd1", "sumC", "sumNote", "srcOL", "srcGB", "srcTitle", "sumNoAI",
-    "serType", "serLimit", "serAdd490", "serUri", "serAI", "awdType", "awdMode", "awdLimit", "awdTpl", "awdExtra", "findTags", "findCond", "findType", "model", "endpoint", "concurrency", "rememberKey"];
+    "serType", "serLimit", "serAdd490", "serUri", "serAI", "awdType", "awdMode", "awdLimit", "awdTpl", "findTags", "findCond", "findType", "model", "endpoint", "concurrency", "rememberKey"];
   function saveSettings() {
     const o = {};
     for (const id of SETTING_IDS) { const el = $("#" + id); o[id] = el.type === "checkbox" ? el.checked : el.value; }
@@ -306,7 +290,6 @@
     if (o) {
       for (const id of SETTING_IDS) { const el = $("#" + id); if (!el || o[id] === undefined) continue; if (el.type === "checkbox") el.checked = !!o[id]; else el.value = o[id]; }
       const r = $(`input[name=serMode][value="${o.serMode}"]`); if (r) r.checked = true;
-      for (const x of $$("#awdList input")) x.checked = !(o.awdOff || []).includes(x.value);
       if (o.task) { const t = $(`input[name=task][value="${o.task}"]`); if (t) { t.checked = true; S.task = o.task; } }
     }
     const k = store.get("keys", null);
@@ -555,7 +538,7 @@ Reply with JSON only and nothing else:
     S.foundTask = o.task;
     S.filter = "review";
     S.shown = 50;
-    const label = o.task === "summary" ? "records with no 520" : o.task === "awards" ? (o.awdType === "video" ? "video records" : "records") + (o.awdMode === "no586" ? " with no 586" : " to check")
+    const label = o.task === "summary" ? "records with no 520" : o.task === "awards" ? (({ video: "video records", audio: "audiobook records", text: "book records", media: "book, audiobook and video records" }[o.awdType] || "records")) + (o.awdMode === "no586" ? " with no 586" : " to check")
       : o.serMode === "untraced" ? "records with a 490 but no series added entry" : "records with no series fields";
     const noIsbn = S.found.filter((c) => !c.isbns.length).length;
     res.innerHTML = `<p><strong>${fmt(hits.length)}</strong> ${esc(label)}${limit && hits.length > limit ? ` — the first <strong>${fmt(limit)}</strong> will be looked up` : ""}.</p>`
@@ -604,7 +587,7 @@ Reply with JSON only and nothing else:
     if (S.foundTask === "summary" && !o.srcOL && !o.srcGB && !o.srcTitle) return toast("Choose at least one place to look.");
     if (S.foundTask === "awards") {
       if (!o.awdTitles.length) return toast("Choose at least one award list.");
-      log("Loading winner lists from Wikipedia and Wikidata…");
+      log("Loading the saved award winner lists…");
       try {
         const { report } = await loadAwardIndex(o);
         for (const line of report) log(line);
@@ -741,78 +724,59 @@ Reply with JSON only and nothing else:
   }
 
   // ---------- awards (586) ----------
-  let awardIndex = { key: "", promise: null };
+  // Winner lists live in data/awards.json, rebuilt yearly by the "Update award data" workflow.
+  let awardData = null;
+  let awardIndex = { key: "", value: null };
 
-  async function resolveWikiTitles(titles) {
-    const out = {};
-    for (let k = 0; k < titles.length; k += 40) {
-      const batch = titles.slice(k, k + 40);
-      const url = "https://en.wikipedia.org/w/api.php?action=query&prop=pageprops&ppprop=wikibase_item&redirects=1&format=json&origin=*&titles="
-        + encodeURIComponent(batch.join("|"));
-      const j = await getJSON(url);
-      const q = (j && j.query) || {};
-      const hop = (t, list) => { const m = (list || []).find((x) => x.from === t); return m ? m.to : t; };
-      const pages = Object.values(q.pages || {});
-      for (const t of batch) {
-        const final = hop(hop(t, q.normalized), q.redirects);
-        const p = pages.find((x) => x.title === final);
-        if (p && p.pageprops && p.pageprops.wikibase_item) {
-          out[t] = { qid: p.pageprops.wikibase_item, title: p.title, url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(p.title.replace(/ /g, "_")) };
-        }
-      }
+  async function loadAwardData() {
+    if (awardData) return awardData;
+    let r;
+    try { r = await fetch("data/awards.json", { cache: "no-cache" }); }
+    catch { throw new Error("Couldn't load the award data. Open the site from GitHub Pages (or any web server), not as a local file."); }
+    if (!r.ok) throw new Error("Award data isn't built yet. Run the \"Update award data\" workflow in the repository's Actions tab.");
+    awardData = await r.json();
+    return awardData;
+  }
+
+  async function renderAwardLists() {
+    const box = $("#awdList");
+    const info = $("#awdInfo");
+    try {
+      const d = await loadAwardData();
+      const off = (store.get("settings", {}) || {}).awdOff || [];
+      const counts = d.awards.map((_, ai) => d.winners.filter((w) => w.a === ai).length);
+      box.innerHTML = d.awards.map((aw, ai) => `<label class="check"><input type="checkbox" id="awd${ai}" value="${esc(aw.list)}" ${off.includes(aw.list) ? "" : "checked"}>
+        <span>${esc(aw.title)} <small class="muted">· ${fmt(counts[ai])} winners · <a href="${esc(aw.url)}" target="_blank" rel="noopener">list</a></small></span></label>`).join("");
+      info.textContent = `Winner lists saved ${d.generated} from Wikipedia and Wikidata. They refresh once a year; run the "Update award data" workflow to refresh sooner or after adding a list to data/award-lists.txt.`;
+    } catch (e) {
+      box.innerHTML = "";
+      info.textContent = e.message;
     }
-    return out;
   }
 
-  function winnersQuery(qid) {
-    return `SELECT ?work ?workLabel ?year (SAMPLE(?pub) AS ?pubYear) (SAMPLE(?st0) AS ?startYear) (SAMPLE(?en0) AS ?endYear)
-  (GROUP_CONCAT(DISTINCT ?alt; separator="|") AS ?alts) (GROUP_CONCAT(DISTINCT ?dirLabel; separator="|") AS ?directors)
-WHERE {
-  { ?work p:P166 ?st . ?st ps:P166 wd:${qid} . FILTER NOT EXISTS { ?work wdt:P31 wd:Q5 } }
-  UNION
-  { ?person p:P166 ?st . ?st ps:P166 wd:${qid} ; pq:P1686 ?work . FILTER NOT EXISTS { ?work wdt:P31 wd:Q5 } }
-  OPTIONAL { ?st pq:P585 ?date . }
-  BIND(YEAR(?date) AS ?year)
-  OPTIONAL { ?work wdt:P577 ?pd . BIND(YEAR(?pd) AS ?pub) }
-  OPTIONAL { ?work wdt:P580 ?sd . BIND(YEAR(?sd) AS ?st0) }
-  OPTIONAL { ?work wdt:P582 ?ed . BIND(YEAR(?ed) AS ?en0) }
-  OPTIONAL { ?work skos:altLabel ?alt . FILTER(LANG(?alt) = "en") }
-  OPTIONAL { ?work wdt:P57 ?dir . ?dir rdfs:label ?dirLabel . FILTER(LANG(?dirLabel) = "en") }
-  ?work rdfs:label ?workLabel . FILTER(LANG(?workLabel) = "en")
-}
-GROUP BY ?work ?workLabel ?year`;
-  }
-
-  function loadAwardIndex(o) {
+  async function loadAwardIndex(o) {
     const key = o.awdTitles.join("|");
-    if (awardIndex.promise && awardIndex.key === key) return awardIndex.promise;
-    awardIndex.key = key;
-    awardIndex.promise = (async () => {
-      const resolved = await resolveWikiTitles(o.awdTitles);
-      const index = new Map();
-      const report = [];
-      const addKey = (k, e) => { if (!k) return; const list = index.get(k) || []; if (!list.includes(e)) list.push(e); index.set(k, list); };
-      for (const t of o.awdTitles) {
-        const r = resolved[t];
-        if (!r) { report.push(`Not found on Wikipedia (check the title): ${t}`); continue; }
-        const j = await getJSON("https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(winnersQuery(r.qid)));
-        const rows = (j && j.results && j.results.bindings) || [];
-        const num = (b, f) => (b[f] && /^\d{4}$/.test(b[f].value) ? +b[f].value : 0);
-        for (const b of rows) {
-          const e = {
-            award: r.title, awardUrl: r.url, work: b.workLabel.value, workUrl: b.work.value.replace(/^http:/, "https:"),
-            year: num(b, "year"), pubYear: num(b, "pubYear"), start: num(b, "startYear"), end: num(b, "endYear"),
-            directors: b.directors && b.directors.value ? b.directors.value.split("|") : [],
-          };
-          const names = [e.work, ...(b.alts && b.alts.value ? b.alts.value.split("|") : [])];
-          for (const n of names) { addKey(norm(n), e); if (n.includes(":")) addKey(norm(n.split(":")[0]), e); }
-        }
-        report.push(`${r.title}: ${fmt(rows.length)} winners`);
+    if (awardIndex.value && awardIndex.key === key) return awardIndex.value;
+    const d = await loadAwardData();
+    const index = new Map();
+    const report = [];
+    const addKey = (k, e) => { if (!k) return; const list = index.get(k) || []; if (!list.includes(e)) list.push(e); index.set(k, list); };
+    d.awards.forEach((aw, ai) => {
+      if (!o.awdTitles.includes(aw.list)) return;
+      let n = 0;
+      for (const row of d.winners) {
+        if (row.a !== ai) continue;
+        const w = d.works[row.w];
+        if (!w) continue;
+        n++;
+        const e = { award: aw.title, awardUrl: aw.url, work: w.l, workUrl: "https://www.wikidata.org/wiki/" + row.w,
+          year: row.y, pubYear: w.p, start: w.s, end: w.e, directors: w.d || [] };
+        for (const name of [w.l, ...(w.alt || [])]) { addKey(norm(name), e); if (name.includes(":")) addKey(norm(name.split(":")[0]), e); }
       }
-      return { index, report };
-    })();
-    awardIndex.promise.catch(() => { awardIndex.promise = null; });
-    return awardIndex.promise;
+      report.push(`${aw.title}: ${fmt(n)} winners`);
+    });
+    awardIndex = { key, value: { index, report } };
+    return awardIndex.value;
   }
 
   function recordTitles(rec) {
@@ -1385,8 +1349,8 @@ GROUP BY ?work ?workLabel ?year`;
   }
 
   // ---------- start ----------
-  $("#awdList").innerHTML = AWARD_PRESETS.map((t, ix) => `<label class="check"><input type="checkbox" id="awd${ix}" value="${esc(t)}" checked> ${esc(t)}</label>`).join("");
   loadSettings();
+  renderAwardLists();
   wire();
   showTaskOpts();
   loadSample().then(() => selectTab("records"));

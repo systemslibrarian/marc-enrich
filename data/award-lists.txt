@@ -1,0 +1,17 @@
+# Award winner lists built into data/awards.json.
+# One English Wikipedia article title per line. Lines starting with # are ignored.
+# After editing, run the "Update award data" workflow (Actions tab) to rebuild.
+
+Academy Award for Best Picture
+Academy Award for Best Original Screenplay
+Primetime Emmy Award for Outstanding Comedy Series
+Primetime Emmy Award for Outstanding Drama Series
+Primetime Emmy Award for Outstanding Limited or Anthology Series
+Golden Globe Award for Best Motion Picture – Drama
+Golden Globe Award for Best Motion Picture – Musical or Comedy
+Golden Globe Award for Best Motion Picture – Non-English Language
+Golden Globe Award for Best Animated Feature Film
+Golden Globe Award for Best Screenplay
+Golden Globe Award for Best Television Series – Drama
+Golden Globe Award for Best Television Series – Musical or Comedy
+Golden Globe Award for Best Limited or Anthology Series or Television Film
