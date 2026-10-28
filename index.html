@@ -159,6 +159,9 @@ pre.mrk.wrap-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
 .task strong { font-family: var(--font-display); font-size: 1.02rem; }
 .task .mono { color: var(--tag); }
 .task p { grid-column: 2; color: var(--muted); font-size: 0.88rem; }
+.task .cap { grid-column: 2; font-size: 0.78rem; font-weight: 600; color: var(--ink); display: flex; gap: 6px; align-items: baseline; margin-top: 2px; }
+.task .cap::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); transform: translateY(-1px); }
+.task .cap.whole::before { background: var(--ok); }
 .task:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px 20px; align-items: start; }
 .fld { display: grid; gap: 6px; min-width: 0; align-content: start; }
@@ -302,13 +305,17 @@ footer { margin-top: 40px; font-size: 0.82rem; color: var(--muted); display: gri
     <h3>What do you want to do?</h3>
     <div class="tasks" role="radiogroup" aria-label="Task">
       <label class="task"><input type="radio" name="task" value="summary" checked><strong>Add summaries <span class="mono">520</span></strong>
-        <p>Find records with no 520, pull descriptions from Open Library and Google Books, and have AI condense them into a neutral summary note.</p></label>
+        <p>Find records with no 520, pull descriptions from Open Library and Google Books, and have AI condense them into a neutral summary note.</p>
+        <span class="cap">In batches — 200 per run by default (web lookups and AI)</span></label>
       <label class="task"><input type="radio" name="task" value="series"><strong>Add series <span class="mono">490 / 830</span></strong>
-        <p>Trace untraced 490s, or find series for records with none, and match each to a Library of Congress series authority.</p></label>
+        <p>Trace untraced 490s, or find series for records with none, and match each to a Library of Congress series authority.</p>
+        <span class="cap">In batches — 200 per run by default (web lookups)</span></label>
       <label class="task"><input type="radio" name="task" value="awards"><strong>Add awards <span class="mono">586</span></strong>
-        <p>Match films and TV series on DVD and Blu-ray against saved Oscar, Emmy and Golden Globe winner lists.</p></label>
+        <p>Match films and TV series on DVD and Blu-ray against saved Oscar, Emmy and Golden Globe winner lists.</p>
+        <span class="cap whole">Whole file at once — no lookups, takes seconds</span></label>
       <label class="task"><input type="radio" name="task" value="find"><strong>Find records by field</strong>
-        <p>List records that are missing (or have) any tags you name. Export the list or just those records. No lookups.</p></label>
+        <p>List records that are missing (or have) any tags you name. Export the list or just those records.</p>
+        <span class="cap whole">Whole file at once — takes seconds</span></label>
     </div>
   </div>
 

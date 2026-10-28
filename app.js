@@ -618,7 +618,7 @@ Reply with JSON only and nothing else:
       }
       done++;
       log(`#${c.i + 1} ${c.title.slice(0, 60)} — ${statusLabel(c.status)}${c.note ? ": " + c.note : ""}`);
-      updateRunStats(done, items.length);
+      updateRunStats(done, items.length, t0);
       scheduleReviewRender();
     });
     const secs = Math.round((Date.now() - t0) / 1000);
@@ -632,10 +632,17 @@ Reply with JSON only and nothing else:
     if (!S.run.stop) toast("Lookups finished. Review the results.");
   }
 
-  function updateRunStats(done, total) {
+  function updateRunStats(done, total, t0) {
     $("#runBar").style.width = (total ? (100 * done) / total : 0) + "%";
     const c = countStatuses();
-    $("#runStats").innerHTML = `<span>${fmt(done)} / ${fmt(total)} done</span>`
+    let eta = "";
+    if (t0 && done >= 3 && done < total) {
+      const perRec = (Date.now() - t0) / done;
+      const left = Math.round((perRec * (total - done)) / 1000);
+      const rate = Math.round(60000 / perRec);
+      eta = `<span>about ${left < 90 ? left + " s" : Math.round(left / 60) + " min"} left · ${fmt(rate)} records/min</span>`;
+    }
+    $("#runStats").innerHTML = `<span>${fmt(done)} / ${fmt(total)} done</span>` + eta
       + ["ready", "review", "nosource", "nomatch", "skipped", "error"].filter((k) => c[k]).map((k) => `<span>${statusLabel(k)}: ${fmt(c[k])}</span>`).join("");
   }
 
@@ -1133,7 +1140,7 @@ Reply with JSON only and nothing else:
     const src = S.src;
     if (!src) return;
     $("#fileName").textContent = src.sample ? "Sample records" : src.name;
-    $("#fileHint").textContent = src.sample ? "Example books and DVDs, not your data. Choose a file to work on your own records." : `${(src.size / 1048576).toFixed(src.size < 1048576 ? 2 : 1)} MB · ${src.kind === "mrc" ? "binary MARC" : "MarcEdit mnemonic text"}`;
+    $("#fileHint").textContent = src.sample ? "Example books and DVDs, not your data. Choose your own file — whole ILS exports are fine (tested with 300,000 records)." : `${(src.size / 1048576).toFixed(src.size < 1048576 ? 2 : 1)} MB · ${src.kind === "mrc" ? "binary MARC" : "MarcEdit mnemonic text"}`;
     const missing520 = src.count - (S.tagCounts.get("520") || 0);
     const chips = [
       src.sample ? `<span class="chip sample">Sample</span>` : "",
