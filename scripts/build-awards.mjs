@@ -5,7 +5,10 @@
  *  1. Wikipedia API: article title -> Wikidata item (follows redirects)
  *  2. Wikidata Query Service: winners of each award, direct ("award received")
  *     or through a person's award with a "for work" qualifier
- *  3. Wikidata entity API: titles, alternate titles, release/run years and
+ *  3. Wikipedia winner tables: the bolded titles under each year in the award
+ *     article's tables, linked to Wikidata. Fills the gaps: Wikidata is thin
+ *     for Emmys and Golden Globes.
+ *  4. Wikidata entity API: titles, alternate titles, release/run years and
  *     directors for every winning work (batched, 50 at a time)
  *
  * If one award fails to load, its entries from the previous awards.json are
@@ -104,6 +107,45 @@ async function winners(qid) {
   return rows.filter((r) => (r.y || !dated.has(r.w)) && !seen.has(r.w + ":" + r.y) && seen.add(r.w + ":" + r.y));
 }
 
+// A wikitext table cell's content: what follows the first "|" outside [[ ]] and {{ }} (before it are attributes).
+function cellContent(cell) {
+  let depth = 0;
+  for (let i = 0; i < cell.length; i++) {
+    const two = cell.slice(i, i + 2);
+    if (two === "[[" || two === "{{") { depth++; i++; continue; }
+    if (two === "]]" || two === "}}") { depth = Math.max(0, depth - 1); i++; continue; }
+    if (cell[i] === "|" && depth === 0) return cell.slice(i + 1);
+  }
+  return cell;
+}
+const plainCell = (c) => cellContent(c)
+  .replace(/\{\{[^{}]*\}\}/g, " ")
+  .replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1")
+  .replace(/<[^>]+>/g, " ").replace(/'{2,}/g, "").trim();
+const BOLD_LINK = /'{3,}\s*\[\[([^\]|#]+)/g;
+
+/** Winners from the award article's tables: bolded links in each year's group of rows. */
+async function wikipediaWinners(title) {
+  const params = new URLSearchParams({ action: "parse", page: title, prop: "wikitext", format: "json", formatversion: "2", redirects: "1" });
+  const j = await request(`${WIKI_API}?${params}`);
+  const text = j.parse?.wikitext || "";
+  const out = [];
+  for (const table of text.match(/\{\|[\s\S]*?\n\|\}/g) || []) {
+    let year = 0;
+    for (const row of table.split(/\n\|-[^\n]*/)) {
+      for (const cell of row.split(/\n[|!]|\|\||!!/)) {
+        const t = plainCell(cell);
+        const m = t.match(/^((?:19[2-9]|20[0-4])\d)\b/);
+        if (m && t.length < 40) year = +m[1];
+      }
+      if (!year) continue;
+      for (const m of row.matchAll(BOLD_LINK)) out.push({ title: m[1].trim(), y: year });
+    }
+  }
+  const seen = new Set();
+  return out.filter((r) => !seen.has(r.title + ":" + r.y) && seen.add(r.title + ":" + r.y));
+}
+
 async function entities(ids, props) {
   const out = {};
   for (let k = 0; k < ids.length; k += 50) {
@@ -147,10 +189,18 @@ async function main() {
     if (!r) { console.warn(`! Not found on Wikipedia: ${t}`); keepPrevious("not found on Wikipedia"); continue; }
     try {
       const list = await winners(r.qid);
-      if (!list.length) throw new Error("no winners returned");
+      let fromWiki = [];
+      try {
+        const wp = await wikipediaWinners(r.title);
+        const ids = await resolveTitles([...new Set(wp.map((x) => x.title))]);
+        fromWiki = wp.filter((x) => ids[x.title]).map((x) => ({ w: ids[x.title].qid, y: x.y, wp: true }))
+          // skip wins Wikidata already has (same work, award year within one)
+          .filter((x) => !list.some((d) => d.w === x.w && (!d.y || Math.abs(d.y - x.y) <= 1)));
+      } catch (e) { console.warn(`  (Wikipedia table not read: ${e.message})`); }
+      if (!list.length && !fromWiki.length) throw new Error("no winners returned");
       const ai = awards.push({ list: t, title: r.title, qid: r.qid, url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(r.title.replace(/ /g, "_")) }) - 1;
-      for (const x of list) rows.push({ a: ai, ...x });
-      console.log(`  ${r.title} (${r.qid}): ${list.length} winners`);
+      for (const x of [...list, ...fromWiki]) rows.push({ a: ai, ...x });
+      console.log(`  ${r.title} (${r.qid}): ${list.length} from Wikidata + ${fromWiki.length} from the Wikipedia table`);
     } catch (e) {
       console.warn(`! ${t}: ${e.message}`);
       keepPrevious(e.message);
@@ -181,8 +231,13 @@ async function main() {
   const dents = await entities([...directorIds], "labels");
   for (const w of Object.values(works)) w.d = w.d.map((id) => dents[id]?.labels?.en?.value).filter(Boolean);
 
-  const winnersOut = rows.filter((x) => works[x.w]).sort((a, b) => a.a - b.a || a.y - b.y || a.w.localeCompare(b.w));
+  // Table rows also bold networks and people; keep only items with a release or run date (films, series).
+  const dated = (id) => works[id] && (works[id].p || works[id].s);
+  const winnersOut = rows.filter((x) => works[x.w] && (!x.wp || dated(x.w))).map(({ wp, ...x }) => x)
+    .sort((a, b) => a.a - b.a || a.y - b.y || a.w.localeCompare(b.w));
   if (!winnersOut.length) { console.error("No winners at all — not writing awards.json."); process.exit(1); }
+  const used = new Set(winnersOut.map((x) => x.w));
+  for (const id of Object.keys(works)) if (!used.has(id)) delete works[id];
 
   const data = {
     generated: new Date().toISOString().slice(0, 10),
