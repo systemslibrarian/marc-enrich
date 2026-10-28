@@ -64,21 +64,44 @@ async function resolveTitles(titles) {
 }
 
 async function winners(qid) {
+  // Wikidata records the same win in several ways; collect all of them.
   const query = `SELECT DISTINCT ?work ?year WHERE {
-  { ?work p:P166 ?st . ?st ps:P166 wd:${qid} . }
-  UNION
-  { ?person p:P166 ?st . ?st ps:P166 wd:${qid} ; pq:P1686 ?work . }
-  OPTIONAL { ?st pq:P585 ?date . BIND(YEAR(?date) AS ?year) }
+  {
+    # 1. the work itself has "award received"
+    ?work p:P166 ?st . ?st ps:P166 wd:${qid} .
+    OPTIONAL { ?st pq:P585 ?date . }
+  } UNION {
+    # 2. a person won it "for work"
+    ?person p:P166 ?st . ?st ps:P166 wd:${qid} ; pq:P1686 ?work .
+    OPTIONAL { ?st pq:P585 ?date . }
+  } UNION {
+    # 3. the award item lists its "winner"s
+    wd:${qid} p:P1346 ?st . ?st ps:P1346 ?w0 .
+    OPTIONAL { ?st pq:P1686 ?fw . }
+    BIND(COALESCE(?fw, ?w0) AS ?work)
+    OPTIONAL { ?st pq:P585 ?date . }
+  } UNION {
+    # 4. a ceremony lists a "winner" "of" this award
+    ?ceremony p:P1346 ?st . ?st ps:P1346 ?w0 ; pq:P642 wd:${qid} .
+    OPTIONAL { ?st pq:P1686 ?fw . }
+    BIND(COALESCE(?fw, ?w0) AS ?work)
+    OPTIONAL { ?ceremony wdt:P585 ?date . }
+  }
+  BIND(YEAR(?date) AS ?year)
 }`;
   const j = await request(WDQS, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/sparql-results+json" },
     body: new URLSearchParams({ query, format: "json" }),
   });
-  return (j.results?.bindings || []).map((b) => ({
+  const rows = (j.results?.bindings || []).filter((b) => b.work?.type === "uri").map((b) => ({
     w: b.work.value.split("/").pop(),
     y: b.year && /^\d{4}$/.test(b.year.value) ? +b.year.value : 0,
   }));
+  // drop a yearless row when the same work also has a dated one
+  const dated = new Set(rows.filter((r) => r.y).map((r) => r.w));
+  const seen = new Set();
+  return rows.filter((r) => (r.y || !dated.has(r.w)) && !seen.has(r.w + ":" + r.y) && seen.add(r.w + ":" + r.y));
 }
 
 async function entities(ids, props) {
